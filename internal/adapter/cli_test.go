@@ -47,4 +47,27 @@ func TestCLIParse(t *testing.T) {
 			t.Fatalf("unexpected command args: %+v", cmd.Args)
 		}
 	})
+
+	t.Run("repo list", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"repo", "list"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "repo.list" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+	})
+
+	t.Run("repo remove", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"repo", "remove", "github.com/org/repo"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "repo.remove" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+		if len(cmd.Args) != 1 || cmd.Args[0] != "github.com/org/repo" {
+			t.Fatalf("unexpected command args: %+v", cmd.Args)
+		}
+	})
 }

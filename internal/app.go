@@ -13,13 +13,15 @@ import (
 )
 
 type App struct {
-	cli                adapter.CLI
-	addWorkspaceUse    usecase.AddWorkspace
-	addRepositoryUse   usecase.AddRepository
-	listWorkspaceUse   usecase.ListWorkspace
-	removeWorkspaceUse usecase.RemoveWorkspace
-	out                io.Writer
-	errOut             io.Writer
+	cli                 adapter.CLI
+	addWorkspaceUse     usecase.AddWorkspace
+	addRepositoryUse    usecase.AddRepository
+	listWorkspaceUse    usecase.ListWorkspace
+	listRepositoryUse   usecase.ListRepository
+	removeWorkspaceUse  usecase.RemoveWorkspace
+	removeRepositoryUse usecase.RemoveRepository
+	out                 io.Writer
+	errOut              io.Writer
 }
 
 func NewApp(out io.Writer, errOut io.Writer) (App, error) {
@@ -31,13 +33,15 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 	store := adapter.NewConfigFileStore(configPath)
 
 	return App{
-		cli:                adapter.NewCLI(out),
-		addWorkspaceUse:    usecase.NewAddWorkspace(store),
-		addRepositoryUse:   usecase.NewAddRepository(store),
-		listWorkspaceUse:   usecase.NewListWorkspace(store),
-		removeWorkspaceUse: usecase.NewRemoveWorkspace(store),
-		out:                out,
-		errOut:             errOut,
+		cli:                 adapter.NewCLI(out),
+		addWorkspaceUse:     usecase.NewAddWorkspace(store),
+		addRepositoryUse:    usecase.NewAddRepository(store),
+		listWorkspaceUse:    usecase.NewListWorkspace(store),
+		listRepositoryUse:   usecase.NewListRepository(store),
+		removeWorkspaceUse:  usecase.NewRemoveWorkspace(store),
+		removeRepositoryUse: usecase.NewRemoveRepository(store),
+		out:                 out,
+		errOut:              errOut,
 	}, nil
 }
 
@@ -87,6 +91,23 @@ func (a App) Run(args []string) int {
 			return 1
 		}
 		fmt.Fprintf(a.out, "added repo %q to workspace %q\n", repoID, cmd.Args[1])
+		return 0
+	case "repo.list":
+		items, err := a.listRepositoryUse.Execute(ctx)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 1
+		}
+		for _, item := range items {
+			fmt.Fprintf(a.out, "%s\t%s\n", item.ID, item.URL)
+		}
+		return 0
+	case "repo.remove":
+		if err := a.removeRepositoryUse.Execute(ctx, usecase.RemoveRepositoryInput{ID: cmd.Args[0]}); err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(a.out, "removed repo %q\n", cmd.Args[0])
 		return 0
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)

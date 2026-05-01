@@ -73,6 +73,27 @@ func (c CLI) parseRepo(args []string) (Command, error) {
 			return Command{}, fmt.Errorf("usage: rivit repo add <url> --workspace <name>")
 		}
 		return Command{Name: "repo.add", Args: []string{repoURL, workspace}}, nil
+	case "list":
+		fs := flag.NewFlagSet("repo list", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		if err := fs.Parse(args[1:]); err != nil {
+			return Command{}, err
+		}
+		if len(fs.Args()) != 0 {
+			return Command{}, fmt.Errorf("usage: rivit repo list")
+		}
+		return Command{Name: "repo.list"}, nil
+	case "remove":
+		fs := flag.NewFlagSet("repo remove", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		if err := fs.Parse(args[1:]); err != nil {
+			return Command{}, err
+		}
+		parsed := fs.Args()
+		if len(parsed) != 1 {
+			return Command{}, fmt.Errorf("usage: rivit repo remove <repo-id>")
+		}
+		return Command{Name: "repo.remove", Args: parsed}, nil
 	default:
 		return Command{}, fmt.Errorf("unknown repo subcommand: %s", args[0])
 	}
@@ -127,4 +148,6 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit workspace list")
 	fmt.Fprintln(c.out, "rivit workspace remove <name>")
 	fmt.Fprintln(c.out, "rivit repo add <url> --workspace <name>")
+	fmt.Fprintln(c.out, "rivit repo list")
+	fmt.Fprintln(c.out, "rivit repo remove <repo-id>")
 }
