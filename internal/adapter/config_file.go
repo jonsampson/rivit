@@ -1,11 +1,13 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/jonsampson/rivit/internal/domain"
 	"gopkg.in/yaml.v3"
@@ -79,7 +81,7 @@ func (s ConfigFileStore) Save(_ context.Context, cfg domain.Config) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	data, err := yaml.Marshal(fromDomainConfig(cfg))
+	data, err := marshalConfigYAML(fromDomainConfig(cfg))
 	if err != nil {
 		return fmt.Errorf("encode config yaml: %w", err)
 	}
@@ -89,6 +91,81 @@ func (s ConfigFileStore) Save(_ context.Context, cfg domain.Config) error {
 	}
 
 	return nil
+}
+
+func marshalConfigYAML(cfg fileConfig) ([]byte, error) {
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+
+	if len(doc.Content) > 0 {
+		root := doc.Content[0]
+		quoteAndSortMapField(root, "workspaces")
+		quoteAndSortMapField(root, "repos")
+	}
+
+	var out bytes.Buffer
+	enc := yaml.NewEncoder(&out)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+
+	return out.Bytes(), nil
+}
+
+func quoteAndSortMapField(root *yaml.Node, field string) {
+	if root == nil || root.Kind != yaml.MappingNode {
+		return
+	}
+
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key := root.Content[i]
+		value := root.Content[i+1]
+		if key.Value != field || value.Kind != yaml.MappingNode {
+			continue
+		}
+
+		sortMappingNode(value)
+		for j := 0; j+1 < len(value.Content); j += 2 {
+			value.Content[j].Style = yaml.DoubleQuotedStyle
+		}
+		return
+	}
+}
+
+func sortMappingNode(node *yaml.Node) {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return
+	}
+
+	type pair struct {
+		key   *yaml.Node
+		value *yaml.Node
+	}
+
+	pairs := make([]pair, 0, len(node.Content)/2)
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		pairs = append(pairs, pair{key: node.Content[i], value: node.Content[i+1]})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].key.Value < pairs[j].key.Value
+	})
+
+	node.Content = node.Content[:0]
+	for _, p := range pairs {
+		node.Content = append(node.Content, p.key, p.value)
+	}
 }
 
 func toDomainConfig(cfg fileConfig) domain.Config {
@@ -138,7 +215,7 @@ func fromDomainConfig(cfg domain.Config) fileConfig {
 	if len(cfg.Workspaces) > 0 {
 		result.Workspaces = make(map[string]fileWorkspace, len(cfg.Workspaces))
 		for name, ws := range cfg.Workspaces {
-			result.Workspaces[name] = fileWorkspace{Path: ws.Path, Repos: ws.Repos}
+			result.Workspaces[name] = fileWorkspace{Path: ws.Path, Repos: sortedStringsCopy(ws.Repos)}
 		}
 	}
 
@@ -153,5 +230,16 @@ func fromDomainConfig(cfg domain.Config) fileConfig {
 		}
 	}
 
+	return result
+}
+
+func sortedStringsCopy(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+
+	result := make([]string, len(values))
+	copy(result, values)
+	sort.Strings(result)
 	return result
 }
