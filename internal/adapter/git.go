@@ -64,3 +64,11 @@ func gitOriginRemote(ctx context.Context, repoPath string) (string, error) {
 	}
 	return string(output), nil
 }
+
+func (d GitDiscoverer) Clone(ctx context.Context, remoteURL string, path string) error {
+	cmd := exec.CommandContext(ctx, "git", "clone", remoteURL, path)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}

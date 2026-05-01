@@ -24,6 +24,7 @@ type App struct {
 	scanUse               usecase.Scan
 	validateWorkspaceUse  usecase.ValidateWorkspace
 	validateRepositoryUse usecase.ValidateRepository
+	hydrateUse            usecase.Hydrate
 	configStore           adapter.ConfigFileStore
 	out                   io.Writer
 	errOut                io.Writer
@@ -38,6 +39,8 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 	store := adapter.NewConfigFileStore(configPath)
 	gitDiscoverer := adapter.NewGitDiscoverer()
 	validateProbe := adapter.NewValidateProbe()
+	pathOps := adapter.NewPathOps()
+	sops := adapter.NewSOPS()
 
 	return App{
 		cli:                   adapter.NewCLI(out),
@@ -50,6 +53,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 		scanUse:               usecase.NewScan(store, gitDiscoverer),
 		validateWorkspaceUse:  usecase.NewValidateWorkspace(store, validateProbe),
 		validateRepositoryUse: usecase.NewValidateRepository(store, validateProbe),
+		hydrateUse:            usecase.NewHydrate(store, pathOps, gitDiscoverer, sops),
 		configStore:           store,
 		out:                   out,
 		errOut:                errOut,
@@ -135,10 +139,45 @@ func (a App) Run(args []string) int {
 		return 0
 	case "validate":
 		return a.runValidate(ctx, cmd.Args)
+	case "hydrate":
+		return a.runHydrate(ctx, cmd.Args)
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)
 		return 2
 	}
+}
+
+func (a App) runHydrate(ctx context.Context, args []string) int {
+	input := usecase.HydrateInput{}
+	for _, arg := range args {
+		switch arg {
+		case "dry-run":
+			input.DryRun = true
+		case "repos-only":
+			input.ReposOnly = true
+		case "secrets-only":
+			input.SecretsOnly = true
+		case "force-env":
+			input.ForceEnv = true
+		default:
+			if input.Target == "" {
+				input.Target = arg
+			}
+		}
+	}
+
+	out, err := a.hydrateUse.Execute(ctx, input)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "error: %v\n", err)
+		return 2
+	}
+
+	fmt.Fprintf(a.out, "hydrate complete: dirs=%d repos=%d secrets=%d skipped=%d", out.DirectoriesCreated, out.ReposCloned, out.SecretsMaterialized, out.Skipped)
+	if input.DryRun {
+		fmt.Fprintf(a.out, " (dry-run)")
+	}
+	fmt.Fprintln(a.out)
+	return 0
 }
 
 func (a App) runValidate(ctx context.Context, args []string) int {

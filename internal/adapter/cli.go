@@ -37,11 +37,66 @@ func (c CLI) Parse(args []string) (Command, error) {
 		return c.parseScan(args[1:])
 	case "validate":
 		return c.parseValidate(args[1:])
+	case "hydrate":
+		return c.parseHydrate(args[1:])
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (c CLI) parseHydrate(args []string) (Command, error) {
+	target := ""
+	dryRun := false
+	reposOnly := false
+	secretsOnly := false
+	forceEnv := false
+
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		switch tok {
+		case "--dry-run":
+			dryRun = true
+		case "--repos-only":
+			reposOnly = true
+		case "--secrets-only":
+			secretsOnly = true
+		case "--force-env":
+			forceEnv = true
+		default:
+			if strings.HasPrefix(tok, "--") {
+				return Command{}, fmt.Errorf("usage: rivit hydrate [workspace-or-repo] [--dry-run] [--repos-only] [--secrets-only] [--force-env]")
+			}
+			if target != "" {
+				return Command{}, fmt.Errorf("usage: rivit hydrate [workspace-or-repo] [--dry-run] [--repos-only] [--secrets-only] [--force-env]")
+			}
+			target = tok
+		}
+	}
+
+	if reposOnly && secretsOnly {
+		return Command{}, fmt.Errorf("usage: rivit hydrate [workspace-or-repo] [--dry-run] [--repos-only] [--secrets-only] [--force-env]")
+	}
+
+	cmd := Command{Name: "hydrate"}
+	if target != "" {
+		cmd.Args = append(cmd.Args, target)
+	}
+	if dryRun {
+		cmd.Args = append(cmd.Args, "dry-run")
+	}
+	if reposOnly {
+		cmd.Args = append(cmd.Args, "repos-only")
+	}
+	if secretsOnly {
+		cmd.Args = append(cmd.Args, "secrets-only")
+	}
+	if forceEnv {
+		cmd.Args = append(cmd.Args, "force-env")
+	}
+
+	return cmd, nil
 }
 
 func (c CLI) parseValidate(args []string) (Command, error) {
@@ -214,4 +269,5 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit repo remove <repo-id>")
 	fmt.Fprintln(c.out, "rivit scan <path> --workspace <name> [--dry-run]")
 	fmt.Fprintln(c.out, "rivit validate [workspace-or-repo]")
+	fmt.Fprintln(c.out, "rivit hydrate [workspace-or-repo] [--dry-run] [--repos-only] [--secrets-only] [--force-env]")
 }

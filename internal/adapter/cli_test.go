@@ -96,4 +96,17 @@ func TestCLIParse(t *testing.T) {
 			t.Fatalf("unexpected command args: %+v", cmd.Args)
 		}
 	})
+
+	t.Run("hydrate", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"hydrate", "personal", "--dry-run", "--force-env"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "hydrate" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[0] != "personal" {
+			t.Fatalf("unexpected command args: %+v", cmd.Args)
+		}
+	})
 }
