@@ -25,6 +25,7 @@ type App struct {
 	validateWorkspaceUse  usecase.ValidateWorkspace
 	validateRepositoryUse usecase.ValidateRepository
 	hydrateUse            usecase.Hydrate
+	absorbUse             usecase.Absorb
 	configStore           adapter.ConfigFileStore
 	out                   io.Writer
 	errOut                io.Writer
@@ -54,6 +55,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 		validateWorkspaceUse:  usecase.NewValidateWorkspace(store, validateProbe),
 		validateRepositoryUse: usecase.NewValidateRepository(store, validateProbe),
 		hydrateUse:            usecase.NewHydrate(store, pathOps, gitDiscoverer, sops),
+		absorbUse:             usecase.NewAbsorb(store, pathOps, sops),
 		configStore:           store,
 		out:                   out,
 		errOut:                errOut,
@@ -141,10 +143,41 @@ func (a App) Run(args []string) int {
 		return a.runValidate(ctx, cmd.Args)
 	case "hydrate":
 		return a.runHydrate(ctx, cmd.Args)
+	case "absorb":
+		return a.runAbsorb(ctx, cmd.Args)
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)
 		return 2
 	}
+}
+
+func (a App) runAbsorb(ctx context.Context, args []string) int {
+	input := usecase.AbsorbInput{}
+	for _, arg := range args {
+		switch arg {
+		case "dry-run":
+			input.DryRun = true
+		case "yes":
+			input.Yes = true
+		default:
+			if input.Target == "" {
+				input.Target = arg
+			}
+		}
+	}
+
+	out, err := a.absorbUse.Execute(ctx, input)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "error: %v\n", err)
+		return 2
+	}
+
+	fmt.Fprintf(a.out, "absorb complete: updated=%d skipped=%d", out.Updated, out.Skipped)
+	if input.DryRun {
+		fmt.Fprintf(a.out, " (dry-run)")
+	}
+	fmt.Fprintln(a.out)
+	return 0
 }
 
 func (a App) runHydrate(ctx context.Context, args []string) int {

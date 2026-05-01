@@ -39,11 +39,49 @@ func (c CLI) Parse(args []string) (Command, error) {
 		return c.parseValidate(args[1:])
 	case "hydrate":
 		return c.parseHydrate(args[1:])
+	case "absorb":
+		return c.parseAbsorb(args[1:])
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (c CLI) parseAbsorb(args []string) (Command, error) {
+	target := ""
+	dryRun := false
+	yes := false
+
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		switch tok {
+		case "--dry-run":
+			dryRun = true
+		case "--yes":
+			yes = true
+		default:
+			if strings.HasPrefix(tok, "--") {
+				return Command{}, fmt.Errorf("usage: rivit absorb [workspace-or-repo] [--dry-run] [--yes]")
+			}
+			if target != "" {
+				return Command{}, fmt.Errorf("usage: rivit absorb [workspace-or-repo] [--dry-run] [--yes]")
+			}
+			target = tok
+		}
+	}
+
+	cmd := Command{Name: "absorb"}
+	if target != "" {
+		cmd.Args = append(cmd.Args, target)
+	}
+	if dryRun {
+		cmd.Args = append(cmd.Args, "dry-run")
+	}
+	if yes {
+		cmd.Args = append(cmd.Args, "yes")
+	}
+	return cmd, nil
 }
 
 func (c CLI) parseHydrate(args []string) (Command, error) {
@@ -270,4 +308,5 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit scan <path> --workspace <name> [--dry-run]")
 	fmt.Fprintln(c.out, "rivit validate [workspace-or-repo]")
 	fmt.Fprintln(c.out, "rivit hydrate [workspace-or-repo] [--dry-run] [--repos-only] [--secrets-only] [--force-env]")
+	fmt.Fprintln(c.out, "rivit absorb [workspace-or-repo] [--dry-run] [--yes]")
 }
