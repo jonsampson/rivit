@@ -20,6 +20,7 @@ type App struct {
 	listRepositoryUse   usecase.ListRepository
 	removeWorkspaceUse  usecase.RemoveWorkspace
 	removeRepositoryUse usecase.RemoveRepository
+	scanUse             usecase.Scan
 	out                 io.Writer
 	errOut              io.Writer
 }
@@ -31,6 +32,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 	}
 
 	store := adapter.NewConfigFileStore(configPath)
+	gitDiscoverer := adapter.NewGitDiscoverer()
 
 	return App{
 		cli:                 adapter.NewCLI(out),
@@ -40,6 +42,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 		listRepositoryUse:   usecase.NewListRepository(store),
 		removeWorkspaceUse:  usecase.NewRemoveWorkspace(store),
 		removeRepositoryUse: usecase.NewRemoveRepository(store),
+		scanUse:             usecase.NewScan(store, gitDiscoverer),
 		out:                 out,
 		errOut:              errOut,
 	}, nil
@@ -108,6 +111,19 @@ func (a App) Run(args []string) int {
 			return 1
 		}
 		fmt.Fprintf(a.out, "removed repo %q\n", cmd.Args[0])
+		return 0
+	case "scan":
+		dryRun := len(cmd.Args) > 2 && cmd.Args[2] == "dry-run"
+		result, err := a.scanUse.Execute(ctx, usecase.ScanInput{Path: cmd.Args[0], Workspace: cmd.Args[1], DryRun: dryRun})
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(a.out, "scan complete: discovered=%d added=%d skipped=%d", result.Discovered, result.Added, result.Skipped)
+		if dryRun {
+			fmt.Fprintf(a.out, " (dry-run)")
+		}
+		fmt.Fprintln(a.out)
 		return 0
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)

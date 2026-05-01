@@ -70,4 +70,17 @@ func TestCLIParse(t *testing.T) {
 			t.Fatalf("unexpected command args: %+v", cmd.Args)
 		}
 	})
+
+	t.Run("scan", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"scan", "~/dev", "--workspace", "personal", "--dry-run"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "scan" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+		if len(cmd.Args) != 3 || cmd.Args[0] != "~/dev" || cmd.Args[1] != "personal" || cmd.Args[2] != "dry-run" {
+			t.Fatalf("unexpected command args: %+v", cmd.Args)
+		}
+	})
 }

@@ -33,11 +33,52 @@ func (c CLI) Parse(args []string) (Command, error) {
 		return c.parseWorkspace(args[1:])
 	case "repo":
 		return c.parseRepo(args[1:])
+	case "scan":
+		return c.parseScan(args[1:])
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (c CLI) parseScan(args []string) (Command, error) {
+	var path string
+	var workspace string
+	dryRun := false
+
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		switch tok {
+		case "--workspace":
+			if i+1 >= len(args) {
+				return Command{}, fmt.Errorf("usage: rivit scan <path> --workspace <name> [--dry-run]")
+			}
+			workspace = args[i+1]
+			i++
+		case "--dry-run":
+			dryRun = true
+		default:
+			if strings.HasPrefix(tok, "--") {
+				return Command{}, fmt.Errorf("usage: rivit scan <path> --workspace <name> [--dry-run]")
+			}
+			if path != "" {
+				return Command{}, fmt.Errorf("usage: rivit scan <path> --workspace <name> [--dry-run]")
+			}
+			path = tok
+		}
+	}
+
+	if path == "" || workspace == "" {
+		return Command{}, fmt.Errorf("usage: rivit scan <path> --workspace <name> [--dry-run]")
+	}
+
+	cmd := Command{Name: "scan", Args: []string{path, workspace}}
+	if dryRun {
+		cmd.Args = append(cmd.Args, "dry-run")
+	}
+
+	return cmd, nil
 }
 
 func (c CLI) parseRepo(args []string) (Command, error) {
@@ -150,4 +191,5 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit repo add <url> --workspace <name>")
 	fmt.Fprintln(c.out, "rivit repo list")
 	fmt.Fprintln(c.out, "rivit repo remove <repo-id>")
+	fmt.Fprintln(c.out, "rivit scan <path> --workspace <name> [--dry-run]")
 }
