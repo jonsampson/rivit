@@ -14,22 +14,10 @@ import (
 )
 
 type App struct {
-	cli                   adapter.CLI
-	addWorkspaceUse       usecase.AddWorkspace
-	initUse               usecase.Init
-	addRepositoryUse      usecase.AddRepository
-	listWorkspaceUse      usecase.ListWorkspace
-	listRepositoryUse     usecase.ListRepository
-	removeWorkspaceUse    usecase.RemoveWorkspace
-	removeRepositoryUse   usecase.RemoveRepository
-	scanUse               usecase.Scan
-	validateWorkspaceUse  usecase.ValidateWorkspace
-	validateRepositoryUse usecase.ValidateRepository
-	hydrateUse            usecase.Hydrate
-	absorbUse             usecase.Absorb
-	configStore           adapter.ConfigFileStore
-	out                   io.Writer
-	errOut                io.Writer
+	cli        adapter.CLI
+	configPath string
+	out        io.Writer
+	errOut     io.Writer
 }
 
 func NewApp(out io.Writer, errOut io.Writer) (App, error) {
@@ -38,29 +26,11 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 		return App{}, err
 	}
 
-	store := adapter.NewConfigFileStore(configPath)
-	gitDiscoverer := adapter.NewGitDiscoverer()
-	validateProbe := adapter.NewValidateProbe()
-	pathOps := adapter.NewPathOps()
-	sops := adapter.NewSOPS()
-
 	return App{
-		cli:                   adapter.NewCLI(out),
-		initUse:               usecase.NewInit(store),
-		addWorkspaceUse:       usecase.NewAddWorkspace(store),
-		addRepositoryUse:      usecase.NewAddRepository(store),
-		listWorkspaceUse:      usecase.NewListWorkspace(store),
-		listRepositoryUse:     usecase.NewListRepository(store),
-		removeWorkspaceUse:    usecase.NewRemoveWorkspace(store),
-		removeRepositoryUse:   usecase.NewRemoveRepository(store),
-		scanUse:               usecase.NewScan(store, gitDiscoverer),
-		validateWorkspaceUse:  usecase.NewValidateWorkspace(store, validateProbe),
-		validateRepositoryUse: usecase.NewValidateRepository(store, validateProbe),
-		hydrateUse:            usecase.NewHydrate(store, pathOps, gitDiscoverer, sops),
-		absorbUse:             usecase.NewAbsorb(store, pathOps, sops),
-		configStore:           store,
-		out:                   out,
-		errOut:                errOut,
+		cli:        adapter.NewCLI(out),
+		configPath: configPath,
+		out:        out,
+		errOut:     errOut,
 	}, nil
 }
 
@@ -78,6 +48,28 @@ func (a App) Run(args []string) int {
 		return 2
 	}
 
+	store := adapter.NewConfigFileStore(a.configPath)
+	if cmd.ConfigPath != "" {
+		store = adapter.NewConfigFileStore(cmd.ConfigPath)
+	}
+	gitDiscoverer := adapter.NewGitDiscoverer()
+	validateProbe := adapter.NewValidateProbe()
+	pathOps := adapter.NewPathOps()
+	sops := adapter.NewSOPS()
+
+	initUse := usecase.NewInit(store)
+	addWorkspaceUse := usecase.NewAddWorkspace(store)
+	addRepositoryUse := usecase.NewAddRepository(store)
+	listWorkspaceUse := usecase.NewListWorkspace(store)
+	listRepositoryUse := usecase.NewListRepository(store)
+	removeWorkspaceUse := usecase.NewRemoveWorkspace(store)
+	removeRepositoryUse := usecase.NewRemoveRepository(store)
+	scanUse := usecase.NewScan(store, gitDiscoverer)
+	validateWorkspaceUse := usecase.NewValidateWorkspace(store, validateProbe)
+	validateRepositoryUse := usecase.NewValidateRepository(store, validateProbe)
+	hydrateUse := usecase.NewHydrate(store, pathOps, gitDiscoverer, sops)
+	absorbUse := usecase.NewAbsorb(store, pathOps, sops)
+
 	switch cmd.Name {
 	case "init":
 		secretsPath, err := defaultSecretsPath()
@@ -85,21 +77,21 @@ func (a App) Run(args []string) int {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 2
 		}
-		if err := a.initUse.Execute(ctx, usecase.InitInput{SecretsPath: secretsPath}); err != nil {
+		if err := initUse.Execute(ctx, usecase.InitInput{SecretsPath: secretsPath}); err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 2
 		}
 		fmt.Fprintln(a.out, "initialized rivit config")
 		return 0
 	case "workspace.add":
-		if err := a.addWorkspaceUse.Execute(ctx, usecase.AddWorkspaceInput{Name: cmd.Args[0], Path: cmd.Args[1]}); err != nil {
+		if err := addWorkspaceUse.Execute(ctx, usecase.AddWorkspaceInput{Name: cmd.Args[0], Path: cmd.Args[1]}); err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(a.out, "added workspace %q\n", cmd.Args[0])
 		return 0
 	case "workspace.list":
-		items, err := a.listWorkspaceUse.Execute(ctx)
+		items, err := listWorkspaceUse.Execute(ctx)
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
@@ -109,14 +101,14 @@ func (a App) Run(args []string) int {
 		}
 		return 0
 	case "workspace.remove":
-		if err := a.removeWorkspaceUse.Execute(ctx, usecase.RemoveWorkspaceInput{Name: cmd.Args[0]}); err != nil {
+		if err := removeWorkspaceUse.Execute(ctx, usecase.RemoveWorkspaceInput{Name: cmd.Args[0]}); err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(a.out, "removed workspace %q\n", cmd.Args[0])
 		return 0
 	case "repo.add":
-		repoID, err := a.addRepositoryUse.Execute(ctx, usecase.AddRepositoryInput{URL: cmd.Args[0], Workspace: cmd.Args[1]})
+		repoID, err := addRepositoryUse.Execute(ctx, usecase.AddRepositoryInput{URL: cmd.Args[0], Workspace: cmd.Args[1]})
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
@@ -124,7 +116,7 @@ func (a App) Run(args []string) int {
 		fmt.Fprintf(a.out, "added repo %q to workspace %q\n", repoID, cmd.Args[1])
 		return 0
 	case "repo.list":
-		items, err := a.listRepositoryUse.Execute(ctx)
+		items, err := listRepositoryUse.Execute(ctx)
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
@@ -134,7 +126,7 @@ func (a App) Run(args []string) int {
 		}
 		return 0
 	case "repo.remove":
-		if err := a.removeRepositoryUse.Execute(ctx, usecase.RemoveRepositoryInput{ID: cmd.Args[0]}); err != nil {
+		if err := removeRepositoryUse.Execute(ctx, usecase.RemoveRepositoryInput{ID: cmd.Args[0]}); err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
 		}
@@ -142,7 +134,7 @@ func (a App) Run(args []string) int {
 		return 0
 	case "scan":
 		dryRun := len(cmd.Args) > 2 && cmd.Args[2] == "dry-run"
-		result, err := a.scanUse.Execute(ctx, usecase.ScanInput{Path: cmd.Args[0], Workspace: cmd.Args[1], DryRun: dryRun})
+		result, err := scanUse.Execute(ctx, usecase.ScanInput{Path: cmd.Args[0], Workspace: cmd.Args[1], DryRun: dryRun})
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
@@ -154,18 +146,18 @@ func (a App) Run(args []string) int {
 		fmt.Fprintln(a.out)
 		return 0
 	case "validate":
-		return a.runValidate(ctx, cmd.Args)
+		return a.runValidate(ctx, cmd.Args, store, validateWorkspaceUse, validateRepositoryUse)
 	case "hydrate":
-		return a.runHydrate(ctx, cmd.Args)
+		return a.runHydrate(ctx, cmd.Args, hydrateUse)
 	case "absorb":
-		return a.runAbsorb(ctx, cmd.Args)
+		return a.runAbsorb(ctx, cmd.Args, absorbUse)
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)
 		return 2
 	}
 }
 
-func (a App) runAbsorb(ctx context.Context, args []string) int {
+func (a App) runAbsorb(ctx context.Context, args []string, absorbUse usecase.Absorb) int {
 	input := usecase.AbsorbInput{}
 	for _, arg := range args {
 		switch arg {
@@ -180,7 +172,7 @@ func (a App) runAbsorb(ctx context.Context, args []string) int {
 		}
 	}
 
-	out, err := a.absorbUse.Execute(ctx, input)
+	out, err := absorbUse.Execute(ctx, input)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "error: %v\n", err)
 		return 2
@@ -194,7 +186,7 @@ func (a App) runAbsorb(ctx context.Context, args []string) int {
 	return 0
 }
 
-func (a App) runHydrate(ctx context.Context, args []string) int {
+func (a App) runHydrate(ctx context.Context, args []string, hydrateUse usecase.Hydrate) int {
 	input := usecase.HydrateInput{}
 	for _, arg := range args {
 		switch arg {
@@ -213,7 +205,7 @@ func (a App) runHydrate(ctx context.Context, args []string) int {
 		}
 	}
 
-	out, err := a.hydrateUse.Execute(ctx, input)
+	out, err := hydrateUse.Execute(ctx, input)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "error: %v\n", err)
 		return 2
@@ -227,11 +219,11 @@ func (a App) runHydrate(ctx context.Context, args []string) int {
 	return 0
 }
 
-func (a App) runValidate(ctx context.Context, args []string) int {
+func (a App) runValidate(ctx context.Context, args []string, store adapter.ConfigFileStore, validateWorkspaceUse usecase.ValidateWorkspace, validateRepositoryUse usecase.ValidateRepository) int {
 	issues := []string{}
 
 	if len(args) == 0 {
-		cfg, err := a.configStore.Load(ctx)
+		cfg, err := store.Load(ctx)
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: load config: %v\n", err)
 			return 2
@@ -244,7 +236,7 @@ func (a App) runValidate(ctx context.Context, args []string) int {
 		sort.Strings(names)
 
 		for _, name := range names {
-			wsIssues, err := a.validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: name})
+			wsIssues, err := validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: name})
 			if err != nil {
 				fmt.Fprintf(a.errOut, "error: %v\n", err)
 				return 2
@@ -255,14 +247,14 @@ func (a App) runValidate(ctx context.Context, args []string) int {
 		}
 	} else {
 		target := args[0]
-		cfg, err := a.configStore.Load(ctx)
+		cfg, err := store.Load(ctx)
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: load config: %v\n", err)
 			return 2
 		}
 
 		if _, ok := cfg.Workspaces[target]; ok {
-			wsIssues, err := a.validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: target})
+			wsIssues, err := validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: target})
 			if err != nil {
 				fmt.Fprintf(a.errOut, "error: %v\n", err)
 				return 2
@@ -271,7 +263,7 @@ func (a App) runValidate(ctx context.Context, args []string) int {
 				issues = append(issues, fmt.Sprintf("%s\t%s\t%s", issue.Scope, issue.Code, issue.Message))
 			}
 		} else if _, ok := cfg.Repos[target]; ok {
-			repoIssues, err := a.validateRepositoryUse.Execute(ctx, usecase.ValidateRepositoryInput{RepositoryID: target})
+			repoIssues, err := validateRepositoryUse.Execute(ctx, usecase.ValidateRepositoryInput{RepositoryID: target})
 			if err != nil {
 				fmt.Fprintf(a.errOut, "error: %v\n", err)
 				return 2

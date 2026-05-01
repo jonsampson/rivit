@@ -11,8 +11,9 @@ import (
 var ErrHelp = errors.New("help requested")
 
 type Command struct {
-	Name string
-	Args []string
+	Name       string
+	Args       []string
+	ConfigPath string
 }
 
 type CLI struct {
@@ -28,26 +29,70 @@ func (c CLI) Parse(args []string) (Command, error) {
 		return Command{}, ErrHelp
 	}
 
-	switch args[0] {
+	global := flag.NewFlagSet("rivit", flag.ContinueOnError)
+	global.SetOutput(io.Discard)
+	configPath := global.String("config", "", "config file path override")
+	if err := global.Parse(args); err != nil {
+		return Command{}, err
+	}
+
+	remaining := global.Args()
+	if len(remaining) == 0 {
+		return Command{}, ErrHelp
+	}
+
+	var cmd Command
+	switch remaining[0] {
 	case "init":
-		return c.parseInit(args[1:])
+		parsed, err := c.parseInit(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "workspace":
-		return c.parseWorkspace(args[1:])
+		parsed, err := c.parseWorkspace(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "repo":
-		return c.parseRepo(args[1:])
+		parsed, err := c.parseRepo(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "scan":
-		return c.parseScan(args[1:])
+		parsed, err := c.parseScan(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "validate":
-		return c.parseValidate(args[1:])
+		parsed, err := c.parseValidate(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "hydrate":
-		return c.parseHydrate(args[1:])
+		parsed, err := c.parseHydrate(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "absorb":
-		return c.parseAbsorb(args[1:])
+		parsed, err := c.parseAbsorb(remaining[1:])
+		if err != nil {
+			return Command{}, err
+		}
+		cmd = parsed
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
-		return Command{}, fmt.Errorf("unknown command: %s", args[0])
+		return Command{}, fmt.Errorf("unknown command: %s", remaining[0])
 	}
+
+	cmd.ConfigPath = *configPath
+	return cmd, nil
 }
 
 func (c CLI) parseInit(args []string) (Command, error) {
@@ -313,6 +358,7 @@ func (c CLI) parseWorkspace(args []string) (Command, error) {
 }
 
 func (c CLI) PrintHelp() {
+	fmt.Fprintln(c.out, "rivit --config <path> <command>")
 	fmt.Fprintln(c.out, "rivit init")
 	fmt.Fprintln(c.out, "rivit workspace add <name> <path>")
 	fmt.Fprintln(c.out, "rivit workspace list")

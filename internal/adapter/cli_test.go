@@ -6,12 +6,15 @@ func TestCLIParse(t *testing.T) {
 	cli := NewCLI(nil)
 
 	t.Run("init", func(t *testing.T) {
-		cmd, err := cli.Parse([]string{"init"})
+		cmd, err := cli.Parse([]string{"--config", "/tmp/rivit.yaml", "init"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if cmd.Name != "init" {
 			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+		if cmd.ConfigPath != "/tmp/rivit.yaml" {
+			t.Fatalf("unexpected config path: %s", cmd.ConfigPath)
 		}
 	})
 
