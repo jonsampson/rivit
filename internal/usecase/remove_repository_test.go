@@ -50,4 +50,31 @@ func TestRemoveRepositoryExecute(t *testing.T) {
 			t.Fatalf("expected ErrRepositoryNotFound, got %v", err)
 		}
 	})
+
+	t.Run("repo id required", func(t *testing.T) {
+		store := &memoryConfigStore{config: domain.Config{Version: 1}}
+		uc := NewRemoveRepository(store)
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: " "})
+		if !errors.Is(err, ErrRepositoryIDRequired) {
+			t.Fatalf("expected ErrRepositoryIDRequired, got %v", err)
+		}
+	})
+
+	t.Run("load error", func(t *testing.T) {
+		store := &memoryConfigStore{loadErr: errors.New("boom")}
+		uc := NewRemoveRepository(store)
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "github.com/org/repo"})
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("save error", func(t *testing.T) {
+		store := &memoryConfigStore{config: domain.Config{Version: 1, Repos: map[string]domain.Repository{"github.com/org/repo": {URL: "git@github.com:org/repo.git"}}}, saveErr: errors.New("boom")}
+		uc := NewRemoveRepository(store)
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "github.com/org/repo"})
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
 }

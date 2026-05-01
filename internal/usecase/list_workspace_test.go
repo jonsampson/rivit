@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jonsampson/rivit/internal/domain"
@@ -44,6 +45,14 @@ func TestListWorkspaceExecute(t *testing.T) {
 
 		if len(items) != 0 {
 			t.Fatalf("expected no items, got %d", len(items))
+		}
+	})
+
+	t.Run("load error", func(t *testing.T) {
+		store := &memoryConfigStore{loadErr: errors.New("boom")}
+		uc := NewListWorkspace(store)
+		if _, err := uc.Execute(context.Background()); err == nil {
+			t.Fatalf("expected error")
 		}
 	})
 }

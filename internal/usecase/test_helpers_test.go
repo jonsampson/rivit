@@ -7,11 +7,16 @@ import (
 )
 
 type memoryConfigStore struct {
-	config domain.Config
-	err    error
+	config  domain.Config
+	err     error
+	loadErr error
+	saveErr error
 }
 
 func (m *memoryConfigStore) Load(context.Context) (domain.Config, error) {
+	if m.loadErr != nil {
+		return domain.Config{}, m.loadErr
+	}
 	if m.err != nil {
 		return domain.Config{}, m.err
 	}
@@ -19,6 +24,9 @@ func (m *memoryConfigStore) Load(context.Context) (domain.Config, error) {
 }
 
 func (m *memoryConfigStore) Save(_ context.Context, cfg domain.Config) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
 	if m.err != nil {
 		return m.err
 	}

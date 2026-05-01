@@ -25,3 +25,19 @@ func TestRepoIDFromRemoteURL(t *testing.T) {
 		})
 	}
 }
+
+func TestRepoIDFromRemoteURLInvalid(t *testing.T) {
+	inputs := []string{
+		"git@github.com",
+		"://not-a-url",
+		"https://github.com",
+	}
+
+	for _, in := range inputs {
+		t.Run(in, func(t *testing.T) {
+			if _, err := RepoIDFromRemoteURL(in); err == nil {
+				t.Fatalf("expected error for %q", in)
+			}
+		})
+	}
+}

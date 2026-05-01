@@ -33,6 +33,33 @@ func TestRemoveWorkspaceExecute(t *testing.T) {
 		}
 	})
 
+	t.Run("workspace name required", func(t *testing.T) {
+		store := &memoryConfigStore{config: domain.Config{Version: 1}}
+		uc := NewRemoveWorkspace(store)
+		err := uc.Execute(context.Background(), RemoveWorkspaceInput{Name: " "})
+		if !errors.Is(err, ErrRemoveWorkspaceNameRequired) {
+			t.Fatalf("expected ErrRemoveWorkspaceNameRequired, got %v", err)
+		}
+	})
+
+	t.Run("load error", func(t *testing.T) {
+		store := &memoryConfigStore{loadErr: errors.New("boom")}
+		uc := NewRemoveWorkspace(store)
+		err := uc.Execute(context.Background(), RemoveWorkspaceInput{Name: "personal"})
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("save error", func(t *testing.T) {
+		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}}, saveErr: errors.New("boom")}
+		uc := NewRemoveWorkspace(store)
+		err := uc.Execute(context.Background(), RemoveWorkspaceInput{Name: "personal"})
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
 	t.Run("removes orphaned repos from catalog", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{
 			Version: 1,

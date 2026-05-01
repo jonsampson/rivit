@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jonsampson/rivit/internal/domain"
@@ -29,4 +30,12 @@ func TestListRepositoryExecute(t *testing.T) {
 	if items[1].ID != "github.com/org/zeta" {
 		t.Fatalf("unexpected second item: %+v", items[1])
 	}
+
+	t.Run("load error", func(t *testing.T) {
+		store := &memoryConfigStore{loadErr: errors.New("boom")}
+		uc := NewListRepository(store)
+		if _, err := uc.Execute(context.Background()); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
 }
