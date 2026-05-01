@@ -29,6 +29,8 @@ func (c CLI) Parse(args []string) (Command, error) {
 	}
 
 	switch args[0] {
+	case "init":
+		return c.parseInit(args[1:])
 	case "workspace":
 		return c.parseWorkspace(args[1:])
 	case "repo":
@@ -46,6 +48,18 @@ func (c CLI) Parse(args []string) (Command, error) {
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (c CLI) parseInit(args []string) (Command, error) {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		return Command{}, err
+	}
+	if len(fs.Args()) != 0 {
+		return Command{}, fmt.Errorf("usage: rivit init")
+	}
+	return Command{Name: "init"}, nil
 }
 
 func (c CLI) parseAbsorb(args []string) (Command, error) {
@@ -299,6 +313,7 @@ func (c CLI) parseWorkspace(args []string) (Command, error) {
 }
 
 func (c CLI) PrintHelp() {
+	fmt.Fprintln(c.out, "rivit init")
 	fmt.Fprintln(c.out, "rivit workspace add <name> <path>")
 	fmt.Fprintln(c.out, "rivit workspace list")
 	fmt.Fprintln(c.out, "rivit workspace remove <name>")

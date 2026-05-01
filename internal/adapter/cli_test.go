@@ -5,6 +5,16 @@ import "testing"
 func TestCLIParse(t *testing.T) {
 	cli := NewCLI(nil)
 
+	t.Run("init", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"init"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "init" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+	})
+
 	t.Run("workspace add", func(t *testing.T) {
 		cmd, err := cli.Parse([]string{"workspace", "add", "personal", "~/Code"})
 		if err != nil {

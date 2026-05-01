@@ -16,6 +16,7 @@ import (
 type App struct {
 	cli                   adapter.CLI
 	addWorkspaceUse       usecase.AddWorkspace
+	initUse               usecase.Init
 	addRepositoryUse      usecase.AddRepository
 	listWorkspaceUse      usecase.ListWorkspace
 	listRepositoryUse     usecase.ListRepository
@@ -45,6 +46,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 
 	return App{
 		cli:                   adapter.NewCLI(out),
+		initUse:               usecase.NewInit(store),
 		addWorkspaceUse:       usecase.NewAddWorkspace(store),
 		addRepositoryUse:      usecase.NewAddRepository(store),
 		listWorkspaceUse:      usecase.NewListWorkspace(store),
@@ -77,6 +79,18 @@ func (a App) Run(args []string) int {
 	}
 
 	switch cmd.Name {
+	case "init":
+		secretsPath, err := defaultSecretsPath()
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 2
+		}
+		if err := a.initUse.Execute(ctx, usecase.InitInput{SecretsPath: secretsPath}); err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 2
+		}
+		fmt.Fprintln(a.out, "initialized rivit config")
+		return 0
 	case "workspace.add":
 		if err := a.addWorkspaceUse.Execute(ctx, usecase.AddWorkspaceInput{Name: cmd.Args[0], Path: cmd.Args[1]}); err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
@@ -288,4 +302,12 @@ func defaultConfigPath() (string, error) {
 		return "", fmt.Errorf("resolve config directory: %w", err)
 	}
 	return filepath.Join(dir, "rivit", "config.yaml"), nil
+}
+
+func defaultSecretsPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve config directory: %w", err)
+	}
+	return filepath.Join(dir, "rivit", "secrets"), nil
 }

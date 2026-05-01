@@ -46,6 +46,17 @@ func NewConfigFileStore(path string) ConfigFileStore {
 	return ConfigFileStore{path: path}
 }
 
+func (s ConfigFileStore) Exists(_ context.Context) (bool, error) {
+	_, err := os.Stat(s.path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat config file: %w", err)
+	}
+	return true, nil
+}
+
 func (s ConfigFileStore) Load(_ context.Context) (domain.Config, error) {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
