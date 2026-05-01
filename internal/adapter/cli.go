@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 )
 
 var ErrHelp = errors.New("help requested")
@@ -30,10 +31,50 @@ func (c CLI) Parse(args []string) (Command, error) {
 	switch args[0] {
 	case "workspace":
 		return c.parseWorkspace(args[1:])
+	case "repo":
+		return c.parseRepo(args[1:])
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
+	}
+}
+
+func (c CLI) parseRepo(args []string) (Command, error) {
+	if len(args) == 0 {
+		return Command{}, fmt.Errorf("repo requires a subcommand")
+	}
+
+	switch args[0] {
+	case "add":
+		var repoURL string
+		var workspace string
+		tokens := args[1:]
+		for i := 0; i < len(tokens); i++ {
+			tok := tokens[i]
+			if tok == "--workspace" {
+				if i+1 >= len(tokens) {
+					return Command{}, fmt.Errorf("usage: rivit repo add <url> --workspace <name>")
+				}
+				workspace = tokens[i+1]
+				i++
+				continue
+			}
+			if strings.HasPrefix(tok, "--") {
+				return Command{}, fmt.Errorf("usage: rivit repo add <url> --workspace <name>")
+			}
+			if repoURL != "" {
+				return Command{}, fmt.Errorf("usage: rivit repo add <url> --workspace <name>")
+			}
+			repoURL = tok
+		}
+
+		if repoURL == "" || workspace == "" {
+			return Command{}, fmt.Errorf("usage: rivit repo add <url> --workspace <name>")
+		}
+		return Command{Name: "repo.add", Args: []string{repoURL, workspace}}, nil
+	default:
+		return Command{}, fmt.Errorf("unknown repo subcommand: %s", args[0])
 	}
 }
 
@@ -85,4 +126,5 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit workspace add <name> <path>")
 	fmt.Fprintln(c.out, "rivit workspace list")
 	fmt.Fprintln(c.out, "rivit workspace remove <name>")
+	fmt.Fprintln(c.out, "rivit repo add <url> --workspace <name>")
 }

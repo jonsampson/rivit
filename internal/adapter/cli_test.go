@@ -34,4 +34,17 @@ func TestCLIParse(t *testing.T) {
 			t.Fatalf("unexpected command name: %s", cmd.Name)
 		}
 	})
+
+	t.Run("repo add", func(t *testing.T) {
+		cmd, err := cli.Parse([]string{"repo", "add", "git@github.com:jonsampson/rivit.git", "--workspace", "personal"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cmd.Name != "repo.add" {
+			t.Fatalf("unexpected command name: %s", cmd.Name)
+		}
+		if len(cmd.Args) != 2 || cmd.Args[1] != "personal" {
+			t.Fatalf("unexpected command args: %+v", cmd.Args)
+		}
+	})
 }

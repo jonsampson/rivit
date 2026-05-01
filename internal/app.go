@@ -15,6 +15,7 @@ import (
 type App struct {
 	cli                adapter.CLI
 	addWorkspaceUse    usecase.AddWorkspace
+	addRepositoryUse   usecase.AddRepository
 	listWorkspaceUse   usecase.ListWorkspace
 	removeWorkspaceUse usecase.RemoveWorkspace
 	out                io.Writer
@@ -32,6 +33,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 	return App{
 		cli:                adapter.NewCLI(out),
 		addWorkspaceUse:    usecase.NewAddWorkspace(store),
+		addRepositoryUse:   usecase.NewAddRepository(store),
 		listWorkspaceUse:   usecase.NewListWorkspace(store),
 		removeWorkspaceUse: usecase.NewRemoveWorkspace(store),
 		out:                out,
@@ -77,6 +79,14 @@ func (a App) Run(args []string) int {
 			return 1
 		}
 		fmt.Fprintf(a.out, "removed workspace %q\n", cmd.Args[0])
+		return 0
+	case "repo.add":
+		repoID, err := a.addRepositoryUse.Execute(ctx, usecase.AddRepositoryInput{URL: cmd.Args[0], Workspace: cmd.Args[1]})
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(a.out, "added repo %q to workspace %q\n", repoID, cmd.Args[1])
 		return 0
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)
