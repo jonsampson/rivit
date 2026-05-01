@@ -7,22 +7,26 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/jonsampson/rivit/internal/adapter"
 	"github.com/jonsampson/rivit/internal/usecase"
 )
 
 type App struct {
-	cli                 adapter.CLI
-	addWorkspaceUse     usecase.AddWorkspace
-	addRepositoryUse    usecase.AddRepository
-	listWorkspaceUse    usecase.ListWorkspace
-	listRepositoryUse   usecase.ListRepository
-	removeWorkspaceUse  usecase.RemoveWorkspace
-	removeRepositoryUse usecase.RemoveRepository
-	scanUse             usecase.Scan
-	out                 io.Writer
-	errOut              io.Writer
+	cli                   adapter.CLI
+	addWorkspaceUse       usecase.AddWorkspace
+	addRepositoryUse      usecase.AddRepository
+	listWorkspaceUse      usecase.ListWorkspace
+	listRepositoryUse     usecase.ListRepository
+	removeWorkspaceUse    usecase.RemoveWorkspace
+	removeRepositoryUse   usecase.RemoveRepository
+	scanUse               usecase.Scan
+	validateWorkspaceUse  usecase.ValidateWorkspace
+	validateRepositoryUse usecase.ValidateRepository
+	configStore           adapter.ConfigFileStore
+	out                   io.Writer
+	errOut                io.Writer
 }
 
 func NewApp(out io.Writer, errOut io.Writer) (App, error) {
@@ -33,18 +37,22 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 
 	store := adapter.NewConfigFileStore(configPath)
 	gitDiscoverer := adapter.NewGitDiscoverer()
+	validateProbe := adapter.NewValidateProbe()
 
 	return App{
-		cli:                 adapter.NewCLI(out),
-		addWorkspaceUse:     usecase.NewAddWorkspace(store),
-		addRepositoryUse:    usecase.NewAddRepository(store),
-		listWorkspaceUse:    usecase.NewListWorkspace(store),
-		listRepositoryUse:   usecase.NewListRepository(store),
-		removeWorkspaceUse:  usecase.NewRemoveWorkspace(store),
-		removeRepositoryUse: usecase.NewRemoveRepository(store),
-		scanUse:             usecase.NewScan(store, gitDiscoverer),
-		out:                 out,
-		errOut:              errOut,
+		cli:                   adapter.NewCLI(out),
+		addWorkspaceUse:       usecase.NewAddWorkspace(store),
+		addRepositoryUse:      usecase.NewAddRepository(store),
+		listWorkspaceUse:      usecase.NewListWorkspace(store),
+		listRepositoryUse:     usecase.NewListRepository(store),
+		removeWorkspaceUse:    usecase.NewRemoveWorkspace(store),
+		removeRepositoryUse:   usecase.NewRemoveRepository(store),
+		scanUse:               usecase.NewScan(store, gitDiscoverer),
+		validateWorkspaceUse:  usecase.NewValidateWorkspace(store, validateProbe),
+		validateRepositoryUse: usecase.NewValidateRepository(store, validateProbe),
+		configStore:           store,
+		out:                   out,
+		errOut:                errOut,
 	}, nil
 }
 
@@ -125,10 +133,81 @@ func (a App) Run(args []string) int {
 		}
 		fmt.Fprintln(a.out)
 		return 0
+	case "validate":
+		return a.runValidate(ctx, cmd.Args)
 	default:
 		fmt.Fprintf(a.errOut, "error: unsupported command %q\n", cmd.Name)
 		return 2
 	}
+}
+
+func (a App) runValidate(ctx context.Context, args []string) int {
+	issues := []string{}
+
+	if len(args) == 0 {
+		cfg, err := a.configStore.Load(ctx)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: load config: %v\n", err)
+			return 2
+		}
+
+		names := make([]string, 0, len(cfg.Workspaces))
+		for name := range cfg.Workspaces {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		for _, name := range names {
+			wsIssues, err := a.validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: name})
+			if err != nil {
+				fmt.Fprintf(a.errOut, "error: %v\n", err)
+				return 2
+			}
+			for _, issue := range wsIssues {
+				issues = append(issues, fmt.Sprintf("%s\t%s\t%s", issue.Scope, issue.Code, issue.Message))
+			}
+		}
+	} else {
+		target := args[0]
+		cfg, err := a.configStore.Load(ctx)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: load config: %v\n", err)
+			return 2
+		}
+
+		if _, ok := cfg.Workspaces[target]; ok {
+			wsIssues, err := a.validateWorkspaceUse.Execute(ctx, usecase.ValidateWorkspaceInput{WorkspaceName: target})
+			if err != nil {
+				fmt.Fprintf(a.errOut, "error: %v\n", err)
+				return 2
+			}
+			for _, issue := range wsIssues {
+				issues = append(issues, fmt.Sprintf("%s\t%s\t%s", issue.Scope, issue.Code, issue.Message))
+			}
+		} else if _, ok := cfg.Repos[target]; ok {
+			repoIssues, err := a.validateRepositoryUse.Execute(ctx, usecase.ValidateRepositoryInput{RepositoryID: target})
+			if err != nil {
+				fmt.Fprintf(a.errOut, "error: %v\n", err)
+				return 2
+			}
+			for _, issue := range repoIssues {
+				issues = append(issues, fmt.Sprintf("%s\t%s\t%s", issue.Scope, issue.Code, issue.Message))
+			}
+		} else {
+			fmt.Fprintf(a.errOut, "error: target not found: %s\n", target)
+			return 2
+		}
+	}
+
+	if len(issues) == 0 {
+		fmt.Fprintln(a.out, "valid")
+		return 0
+	}
+
+	for _, line := range issues {
+		fmt.Fprintln(a.out, line)
+	}
+	return 1
 }
 
 func defaultConfigPath() (string, error) {

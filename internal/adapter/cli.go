@@ -35,11 +35,32 @@ func (c CLI) Parse(args []string) (Command, error) {
 		return c.parseRepo(args[1:])
 	case "scan":
 		return c.parseScan(args[1:])
+	case "validate":
+		return c.parseValidate(args[1:])
 	case "help", "--help", "-h":
 		return Command{}, ErrHelp
 	default:
 		return Command{}, fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (c CLI) parseValidate(args []string) (Command, error) {
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		return Command{}, err
+	}
+
+	parsed := fs.Args()
+	if len(parsed) > 1 {
+		return Command{}, fmt.Errorf("usage: rivit validate [workspace-or-repo]")
+	}
+
+	if len(parsed) == 0 {
+		return Command{Name: "validate"}, nil
+	}
+
+	return Command{Name: "validate", Args: parsed}, nil
 }
 
 func (c CLI) parseScan(args []string) (Command, error) {
@@ -192,4 +213,5 @@ func (c CLI) PrintHelp() {
 	fmt.Fprintln(c.out, "rivit repo list")
 	fmt.Fprintln(c.out, "rivit repo remove <repo-id>")
 	fmt.Fprintln(c.out, "rivit scan <path> --workspace <name> [--dry-run]")
+	fmt.Fprintln(c.out, "rivit validate [workspace-or-repo]")
 }
