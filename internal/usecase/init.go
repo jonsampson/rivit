@@ -48,7 +48,6 @@ func (u Init) Execute(ctx context.Context, input InitInput) error {
 	cfg := domain.Config{
 		Version:    1,
 		Workspaces: map[string]domain.Workspace{},
-		Repos:      map[string]domain.Repository{},
 		Secrets: domain.SecretsConfig{
 			Provider: "sops",
 			Path:     secretsPath,

@@ -42,21 +42,22 @@ func (u RemoveRepository) Execute(ctx context.Context, input RemoveRepositoryInp
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if _, ok := cfg.Repos[repoID]; !ok {
-		return fmt.Errorf("%w: %s", ErrRepositoryNotFound, repoID)
+	found := false
+	for name, ws := range cfg.Workspaces {
+		repos := make([]domain.Repository, 0, len(ws.Repos))
+		for _, repo := range ws.Repos {
+			if repo.URL == repoID {
+				found = true
+				continue
+			}
+			repos = append(repos, repo)
+		}
+		ws.Repos = repos
+		cfg.Workspaces[name] = ws
 	}
 
-	delete(cfg.Repos, repoID)
-
-	for name, ws := range cfg.Workspaces {
-		filtered := make([]string, 0, len(ws.Repos))
-		for _, id := range ws.Repos {
-			if id != repoID {
-				filtered = append(filtered, id)
-			}
-		}
-		ws.Repos = filtered
-		cfg.Workspaces[name] = ws
+	if !found {
+		return fmt.Errorf("%w: %s", ErrRepositoryNotFound, repoID)
 	}
 
 	if err := u.store.Save(ctx, cfg); err != nil {

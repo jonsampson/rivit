@@ -45,12 +45,7 @@ func (u ValidateRepository) Execute(ctx context.Context, input ValidateRepositor
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	repo, ok := cfg.Repos[repoID]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrRepositoryNotFound, repoID)
-	}
-
-	wsPath, err := workspacePathForRepository(cfg, repoID)
+	wsPath, repo, err := workspacePathForRepository(cfg, repoID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,19 +58,23 @@ func (u ValidateRepository) Execute(ctx context.Context, input ValidateRepositor
 	return domain.ValidateRepository(inputModel), nil
 }
 
-func workspacePathForRepository(cfg domain.Config, repoID string) (string, error) {
+func workspacePathForRepository(cfg domain.Config, repoURL string) (string, domain.Repository, error) {
 	for _, ws := range cfg.Workspaces {
-		for _, id := range ws.Repos {
-			if id == repoID {
-				return ws.Path, nil
+		for _, repo := range ws.Repos {
+			if repo.URL == repoURL {
+				return ws.Path, repo, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("repository not attached to any workspace: %s", repoID)
+	return "", domain.Repository{}, fmt.Errorf("%w: %s", ErrRepositoryNotFound, repoURL)
 }
 
 func buildRepositoryValidationInput(ctx context.Context, probe repositoryProbe, cfg domain.Config, repoID string, repo domain.Repository, workspacePath string) (domain.RepositoryValidationInput, error) {
-	repoPath := filepath.Join(workspacePath, repoID)
+	repoPathID, err := domain.RepoIDFromRemoteURL(repo.URL)
+	if err != nil {
+		return domain.RepositoryValidationInput{}, err
+	}
+	repoPath := filepath.Join(workspacePath, repoPathID)
 	pathExists, err := probe.PathExists(ctx, repoPath)
 	if err != nil {
 		return domain.RepositoryValidationInput{}, fmt.Errorf("check repository path: %w", err)

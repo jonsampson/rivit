@@ -151,9 +151,9 @@ func resolveHydrateTargets(cfg domain.Config, target string) ([]hydrateRepoRef, 
 	seen := map[string]struct{}{}
 
 	appendWorkspace := func(ws domain.Workspace) {
-		for _, repoID := range ws.Repos {
-			repo, ok := cfg.Repos[repoID]
-			if !ok {
+		for _, repo := range ws.Repos {
+			repoID, err := domain.RepoIDFromRemoteURL(repo.URL)
+			if err != nil {
 				continue
 			}
 			key := ws.Path + "|" + repoID
@@ -177,15 +177,17 @@ func resolveHydrateTargets(cfg domain.Config, target string) ([]hydrateRepoRef, 
 		return refs, nil
 	}
 
-	if repo, ok := cfg.Repos[target]; ok {
-		for _, ws := range cfg.Workspaces {
-			for _, repoID := range ws.Repos {
-				if repoID == target {
-					return []hydrateRepoRef{{WorkspacePath: ws.Path, RepositoryID: target, Repository: repo}}, nil
-				}
+	for _, ws := range cfg.Workspaces {
+		for _, repo := range ws.Repos {
+			if repo.URL != target {
+				continue
 			}
+			repoID, err := domain.RepoIDFromRemoteURL(repo.URL)
+			if err != nil {
+				return nil, err
+			}
+			return []hydrateRepoRef{{WorkspacePath: ws.Path, RepositoryID: repoID, Repository: repo}}, nil
 		}
-		return nil, fmt.Errorf("repository not attached to workspace: %s", target)
 	}
 
 	return nil, fmt.Errorf("%w: %s", ErrHydrateTargetNotFound, target)

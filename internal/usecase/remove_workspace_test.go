@@ -60,16 +60,12 @@ func TestRemoveWorkspaceExecute(t *testing.T) {
 		}
 	})
 
-	t.Run("removes orphaned repos from catalog", func(t *testing.T) {
+	t.Run("removes workspace with nested repos", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{
 			Version: 1,
 			Workspaces: map[string]domain.Workspace{
-				"personal": {Path: "~/Code", Repos: []string{"github.com/org/one", "github.com/org/shared"}},
-				"work":     {Path: "~/Work", Repos: []string{"github.com/org/shared"}},
-			},
-			Repos: map[string]domain.Repository{
-				"github.com/org/one":    {URL: "git@github.com:org/one.git"},
-				"github.com/org/shared": {URL: "git@github.com:org/shared.git"},
+				"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:org/one.git"}, {URL: "git@github.com:org/shared.git"}}},
+				"work":     {Path: "~/Work", Repos: []domain.Repository{{URL: "git@github.com:org/shared.git"}}},
 			},
 		}}
 		uc := NewRemoveWorkspace(store)
@@ -79,12 +75,8 @@ func TestRemoveWorkspaceExecute(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if _, exists := store.config.Repos["github.com/org/one"]; exists {
-			t.Fatalf("orphaned repo still present in catalog")
-		}
-
-		if _, exists := store.config.Repos["github.com/org/shared"]; !exists {
-			t.Fatalf("shared repo should remain in catalog")
+		if _, exists := store.config.Workspaces["work"]; !exists {
+			t.Fatalf("expected other workspace to remain")
 		}
 	})
 }

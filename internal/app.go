@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/jonsampson/rivit/internal/adapter"
+	"github.com/jonsampson/rivit/internal/domain"
 	"github.com/jonsampson/rivit/internal/usecase"
 )
 
@@ -108,12 +109,12 @@ func (a App) Run(args []string) int {
 		fmt.Fprintf(a.out, "removed workspace %q\n", cmd.Args[0])
 		return 0
 	case "repo.add":
-		repoID, err := addRepositoryUse.Execute(ctx, usecase.AddRepositoryInput{URL: cmd.Args[0], Workspace: cmd.Args[1]})
+		repoURL, err := addRepositoryUse.Execute(ctx, usecase.AddRepositoryInput{URL: cmd.Args[0], Workspace: cmd.Args[1]})
 		if err != nil {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(a.out, "added repo %q to workspace %q\n", repoID, cmd.Args[1])
+		fmt.Fprintf(a.out, "added repo %q to workspace %q\n", repoURL, cmd.Args[1])
 		return 0
 	case "repo.list":
 		items, err := listRepositoryUse.Execute(ctx)
@@ -122,7 +123,7 @@ func (a App) Run(args []string) int {
 			return 1
 		}
 		for _, item := range items {
-			fmt.Fprintf(a.out, "%s\t%s\n", item.ID, item.URL)
+			fmt.Fprintf(a.out, "%s\t%s\n", item.Workspace, item.URL)
 		}
 		return 0
 	case "repo.remove":
@@ -262,7 +263,7 @@ func (a App) runValidate(ctx context.Context, args []string, store adapter.Confi
 			for _, issue := range wsIssues {
 				issues = append(issues, fmt.Sprintf("%s\t%s\t%s", issue.Scope, issue.Code, issue.Message))
 			}
-		} else if _, ok := cfg.Repos[target]; ok {
+		} else if repositoryExistsInAnyWorkspace(cfg, target) {
 			repoIssues, err := validateRepositoryUse.Execute(ctx, usecase.ValidateRepositoryInput{RepositoryID: target})
 			if err != nil {
 				fmt.Fprintf(a.errOut, "error: %v\n", err)
@@ -294,6 +295,18 @@ func defaultConfigPath() (string, error) {
 		return "", fmt.Errorf("resolve config directory: %w", err)
 	}
 	return filepath.Join(dir, "rivit", "config.yaml"), nil
+}
+
+func repositoryExistsInAnyWorkspace(cfg domain.Config, repoURL string) bool {
+	for _, ws := range cfg.Workspaces {
+		for _, repo := range ws.Repos {
+			if repo.URL == repoURL {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func defaultSecretsPath() (string, error) {

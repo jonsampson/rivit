@@ -9,9 +9,9 @@ import (
 )
 
 func TestListRepositoryExecute(t *testing.T) {
-	store := &memoryConfigStore{config: domain.Config{Version: 1, Repos: map[string]domain.Repository{
-		"github.com/org/zeta":  {URL: "git@github.com:org/zeta.git"},
-		"github.com/org/alpha": {URL: "git@github.com:org/alpha.git"},
+	store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{
+		"work": {Path: "~/work", Repos: []domain.Repository{{URL: "git@github.com:org/zeta.git"}}},
+		"home": {Path: "~/home", Repos: []domain.Repository{{URL: "git@github.com:org/alpha.git"}}},
 	}}}
 	uc := NewListRepository(store)
 
@@ -24,10 +24,10 @@ func TestListRepositoryExecute(t *testing.T) {
 		t.Fatalf("expected 2 items, got %d", len(items))
 	}
 
-	if items[0].ID != "github.com/org/alpha" {
+	if items[0].Workspace != "home" || items[0].URL != "git@github.com:org/alpha.git" {
 		t.Fatalf("unexpected first item: %+v", items[0])
 	}
-	if items[1].ID != "github.com/org/zeta" {
+	if items[1].Workspace != "work" || items[1].URL != "git@github.com:org/zeta.git" {
 		t.Fatalf("unexpected second item: %+v", items[1])
 	}
 

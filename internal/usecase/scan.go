@@ -68,38 +68,33 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 	}
 
 	knownInWorkspace := map[string]struct{}{}
-	for _, repoID := range ws.Repos {
-		knownInWorkspace[repoID] = struct{}{}
+	for _, repo := range ws.Repos {
+		knownInWorkspace[repo.URL] = struct{}{}
 	}
 
 	added := 0
 	skipped := 0
 	for _, repo := range found {
-		repoID, err := domain.RepoIDFromRemoteURL(repo.URL)
+		repoURL := strings.TrimSpace(repo.URL)
+		repoID, err := domain.RepoIDFromRemoteURL(repoURL)
 		if err != nil {
 			skipped++
 			continue
 		}
 
-		if _, exists := knownInWorkspace[repoID]; exists {
+		if _, exists := knownInWorkspace[repoURL]; exists {
 			skipped++
 			continue
 		}
 
-		knownInWorkspace[repoID] = struct{}{}
-		ws.Repos = append(ws.Repos, repoID)
-		if cfg.Repos == nil {
-			cfg.Repos = map[string]domain.Repository{}
-		}
-		if _, exists := cfg.Repos[repoID]; !exists {
-			cfg.Repos[repoID] = domain.Repository{
-				URL: repo.URL,
-				Secret: &domain.Secret{
-					Source: repoID + ".env.sops",
-					Target: ".env",
-				},
-			}
-		}
+		knownInWorkspace[repoURL] = struct{}{}
+		ws.Repos = append(ws.Repos, domain.Repository{
+			URL: repoURL,
+			Secret: &domain.Secret{
+				Source: repoID + ".env.sops",
+				Target: ".env",
+			},
+		})
 		added++
 	}
 

@@ -13,8 +13,8 @@ type repositoryReader interface {
 }
 
 type ListedRepository struct {
-	ID  string
-	URL string
+	Workspace string
+	URL       string
 }
 
 type ListRepository struct {
@@ -31,13 +31,18 @@ func (u ListRepository) Execute(ctx context.Context) ([]ListedRepository, error)
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	items := make([]ListedRepository, 0, len(cfg.Repos))
-	for id, repo := range cfg.Repos {
-		items = append(items, ListedRepository{ID: id, URL: repo.URL})
+	items := []ListedRepository{}
+	for workspaceName, ws := range cfg.Workspaces {
+		for _, repo := range ws.Repos {
+			items = append(items, ListedRepository{Workspace: workspaceName, URL: repo.URL})
+		}
 	}
 
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].ID < items[j].ID
+		if items[i].Workspace == items[j].Workspace {
+			return items[i].URL < items[j].URL
+		}
+		return items[i].Workspace < items[j].Workspace
 	})
 
 	return items, nil

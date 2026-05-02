@@ -44,11 +44,6 @@ func (u AddRepository) Execute(ctx context.Context, input AddRepositoryInput) (s
 		return "", ErrRepositoryWorkspaceReq
 	}
 
-	repoID, err := domain.RepoIDFromRemoteURL(repoURL)
-	if err != nil {
-		return "", err
-	}
-
 	cfg, err := u.store.Load(ctx)
 	if err != nil {
 		return "", fmt.Errorf("load config: %w", err)
@@ -60,24 +55,28 @@ func (u AddRepository) Execute(ctx context.Context, input AddRepositoryInput) (s
 	}
 
 	for _, existing := range ws.Repos {
-		if existing == repoID {
-			return "", fmt.Errorf("%w: %s already in workspace %s", ErrRepositoryExists, repoID, workspaceName)
+		if existing.URL == repoURL {
+			return "", fmt.Errorf("%w: %s already in workspace %s", ErrRepositoryExists, repoURL, workspaceName)
 		}
 	}
 
-	ws.Repos = append(ws.Repos, repoID)
-	cfg.Workspaces[workspaceName] = ws
+	repoID, err := domain.RepoIDFromRemoteURL(repoURL)
+	if err != nil {
+		return "", err
+	}
 
-	if cfg.Repos == nil {
-		cfg.Repos = map[string]domain.Repository{}
-	}
-	if _, exists := cfg.Repos[repoID]; !exists {
-		cfg.Repos[repoID] = domain.Repository{URL: repoURL}
-	}
+	ws.Repos = append(ws.Repos, domain.Repository{
+		URL: repoURL,
+		Secret: &domain.Secret{
+			Source: repoID + ".env.sops",
+			Target: ".env",
+		},
+	})
+	cfg.Workspaces[workspaceName] = ws
 
 	if err := u.store.Save(ctx, cfg); err != nil {
 		return "", fmt.Errorf("save config: %w", err)
 	}
 
-	return repoID, nil
+	return repoURL, nil
 }

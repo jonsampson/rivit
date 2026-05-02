@@ -9,30 +9,22 @@ import (
 )
 
 func TestRemoveRepositoryExecute(t *testing.T) {
-	t.Run("removes repo from catalog and workspaces", func(t *testing.T) {
+	t.Run("removes repo from workspaces", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{
 			Version: 1,
 			Workspaces: map[string]domain.Workspace{
-				"personal": {Path: "~/Code", Repos: []string{"github.com/org/one", "github.com/org/two"}},
-				"work":     {Path: "~/Work", Repos: []string{"github.com/org/two"}},
-			},
-			Repos: map[string]domain.Repository{
-				"github.com/org/one": {URL: "git@github.com:org/one.git"},
-				"github.com/org/two": {URL: "git@github.com:org/two.git"},
+				"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:org/one.git"}, {URL: "git@github.com:org/two.git"}}},
+				"work":     {Path: "~/Work", Repos: []domain.Repository{{URL: "git@github.com:org/two.git"}}},
 			},
 		}}
 
 		uc := NewRemoveRepository(store)
-		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "github.com/org/two"})
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "git@github.com:org/two.git"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if _, ok := store.config.Repos["github.com/org/two"]; ok {
-			t.Fatalf("repo still exists in catalog")
-		}
-
-		if len(store.config.Workspaces["personal"].Repos) != 1 || store.config.Workspaces["personal"].Repos[0] != "github.com/org/one" {
+		if len(store.config.Workspaces["personal"].Repos) != 1 || store.config.Workspaces["personal"].Repos[0].URL != "git@github.com:org/one.git" {
 			t.Fatalf("unexpected personal repos: %+v", store.config.Workspaces["personal"].Repos)
 		}
 
@@ -42,10 +34,10 @@ func TestRemoveRepositoryExecute(t *testing.T) {
 	})
 
 	t.Run("repo not found", func(t *testing.T) {
-		store := &memoryConfigStore{config: domain.Config{Version: 1, Repos: map[string]domain.Repository{}}}
+		store := &memoryConfigStore{config: domain.Config{Version: 1}}
 		uc := NewRemoveRepository(store)
 
-		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "github.com/org/missing"})
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "git@github.com:org/missing.git"})
 		if !errors.Is(err, ErrRepositoryNotFound) {
 			t.Fatalf("expected ErrRepositoryNotFound, got %v", err)
 		}
@@ -70,9 +62,9 @@ func TestRemoveRepositoryExecute(t *testing.T) {
 	})
 
 	t.Run("save error", func(t *testing.T) {
-		store := &memoryConfigStore{config: domain.Config{Version: 1, Repos: map[string]domain.Repository{"github.com/org/repo": {URL: "git@github.com:org/repo.git"}}}, saveErr: errors.New("boom")}
+		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:org/repo.git"}}}}}, saveErr: errors.New("boom")}
 		uc := NewRemoveRepository(store)
-		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "github.com/org/repo"})
+		err := uc.Execute(context.Background(), RemoveRepositoryInput{ID: "git@github.com:org/repo.git"})
 		if err == nil {
 			t.Fatalf("expected error")
 		}

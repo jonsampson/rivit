@@ -14,15 +14,14 @@ import (
 )
 
 type fileConfig struct {
-	Version    int                       `yaml:"version"`
-	Workspaces map[string]fileWorkspace  `yaml:"workspaces"`
-	Repos      map[string]fileRepository `yaml:"repos"`
-	Secrets    fileSecretsConfiguration  `yaml:"secrets"`
+	Version    int                      `yaml:"version"`
+	Workspaces map[string]fileWorkspace `yaml:"workspaces"`
+	Secrets    fileSecretsConfiguration `yaml:"secrets"`
 }
 
 type fileWorkspace struct {
-	Path  string   `yaml:"path"`
-	Repos []string `yaml:"repos"`
+	Path  string           `yaml:"path"`
+	Repos []fileRepository `yaml:"repos"`
 }
 
 type fileRepository struct {
@@ -107,7 +106,6 @@ func marshalConfigYAML(cfg fileConfig) ([]byte, error) {
 	if len(doc.Content) > 0 {
 		root := doc.Content[0]
 		quoteAndSortMapField(root, "workspaces")
-		quoteAndSortMapField(root, "repos")
 	}
 
 	var out bytes.Buffer
@@ -184,18 +182,15 @@ func toDomainConfig(cfg fileConfig) domain.Config {
 	if len(cfg.Workspaces) > 0 {
 		result.Workspaces = make(map[string]domain.Workspace, len(cfg.Workspaces))
 		for name, ws := range cfg.Workspaces {
-			result.Workspaces[name] = domain.Workspace{Path: ws.Path, Repos: ws.Repos}
-		}
-	}
-
-	if len(cfg.Repos) > 0 {
-		result.Repos = make(map[string]domain.Repository, len(cfg.Repos))
-		for id, repo := range cfg.Repos {
-			mapped := domain.Repository{URL: repo.URL}
-			if repo.Secret != nil {
-				mapped.Secret = &domain.Secret{Source: repo.Secret.Source, Target: repo.Secret.Target}
+			repos := make([]domain.Repository, 0, len(ws.Repos))
+			for _, repo := range ws.Repos {
+				mapped := domain.Repository{URL: repo.URL}
+				if repo.Secret != nil {
+					mapped.Secret = &domain.Secret{Source: repo.Secret.Source, Target: repo.Secret.Target}
+				}
+				repos = append(repos, mapped)
 			}
-			result.Repos[id] = mapped
+			result.Workspaces[name] = domain.Workspace{Path: ws.Path, Repos: repos}
 		}
 	}
 
@@ -215,31 +210,30 @@ func fromDomainConfig(cfg domain.Config) fileConfig {
 	if len(cfg.Workspaces) > 0 {
 		result.Workspaces = make(map[string]fileWorkspace, len(cfg.Workspaces))
 		for name, ws := range cfg.Workspaces {
-			result.Workspaces[name] = fileWorkspace{Path: ws.Path, Repos: sortedStringsCopy(ws.Repos)}
-		}
-	}
-
-	if len(cfg.Repos) > 0 {
-		result.Repos = make(map[string]fileRepository, len(cfg.Repos))
-		for id, repo := range cfg.Repos {
-			mapped := fileRepository{URL: repo.URL}
-			if repo.Secret != nil {
-				mapped.Secret = &fileSecret{Source: repo.Secret.Source, Target: repo.Secret.Target}
+			repos := make([]fileRepository, 0, len(ws.Repos))
+			for _, repo := range ws.Repos {
+				mapped := fileRepository{URL: repo.URL}
+				if repo.Secret != nil {
+					mapped.Secret = &fileSecret{Source: repo.Secret.Source, Target: repo.Secret.Target}
+				}
+				repos = append(repos, mapped)
 			}
-			result.Repos[id] = mapped
+			result.Workspaces[name] = fileWorkspace{Path: ws.Path, Repos: sortedRepositoriesCopy(repos)}
 		}
 	}
 
 	return result
 }
 
-func sortedStringsCopy(values []string) []string {
+func sortedRepositoriesCopy(values []fileRepository) []fileRepository {
 	if len(values) == 0 {
 		return values
 	}
 
-	result := make([]string, len(values))
+	result := make([]fileRepository, len(values))
 	copy(result, values)
-	sort.Strings(result)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].URL < result[j].URL
+	})
 	return result
 }

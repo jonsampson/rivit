@@ -46,19 +46,8 @@ func (u ValidateWorkspace) Execute(ctx context.Context, input ValidateWorkspaceI
 	}
 
 	repoInputs := make([]domain.RepositoryValidationInput, 0, len(ws.Repos))
-	extraIssues := []domain.ValidationIssue{}
-	for _, repoID := range ws.Repos {
-		repo, exists := cfg.Repos[repoID]
-		if !exists {
-			extraIssues = append(extraIssues, domain.ValidationIssue{
-				Scope:   repoID,
-				Code:    "repo_missing_from_catalog",
-				Message: "repository is referenced by workspace but missing from repo catalog",
-			})
-			continue
-		}
-
-		inputModel, err := buildRepositoryValidationInput(ctx, u.probe, cfg, repoID, repo, ws.Path)
+	for _, repo := range ws.Repos {
+		inputModel, err := buildRepositoryValidationInput(ctx, u.probe, cfg, repo.URL, repo, ws.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +60,5 @@ func (u ValidateWorkspace) Execute(ctx context.Context, input ValidateWorkspaceI
 		WorkspaceExists: workspaceExists,
 		Repositories:    repoInputs,
 	})
-	issues = append(issues, extraIssues...)
-
 	return issues, nil
 }

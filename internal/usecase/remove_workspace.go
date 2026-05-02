@@ -46,29 +46,12 @@ func (u RemoveWorkspace) Execute(ctx context.Context, input RemoveWorkspaceInput
 		return fmt.Errorf("%w: %s", ErrWorkspaceNotFound, name)
 	}
 
-	workspace, ok := cfg.Workspaces[name]
+	_, ok := cfg.Workspaces[name]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrWorkspaceNotFound, name)
 	}
 
 	delete(cfg.Workspaces, name)
-
-	orphanCandidates := workspace.Repos
-	if len(orphanCandidates) > 0 && len(cfg.Repos) > 0 {
-		stillReferenced := map[string]struct{}{}
-		for _, ws := range cfg.Workspaces {
-			for _, repoID := range ws.Repos {
-				stillReferenced[repoID] = struct{}{}
-			}
-		}
-
-		for _, repoID := range orphanCandidates {
-			if _, inUse := stillReferenced[repoID]; inUse {
-				continue
-			}
-			delete(cfg.Repos, repoID)
-		}
-	}
 
 	if err := u.store.Save(ctx, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)

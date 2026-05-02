@@ -11,13 +11,10 @@ func TestValidateWorkspaceExecute(t *testing.T) {
 	store := &memoryConfigStore{config: domain.Config{
 		Version: 1,
 		Workspaces: map[string]domain.Workspace{
-			"personal": {Path: "/ws", Repos: []string{"github.com/org/repo"}},
-		},
-		Repos: map[string]domain.Repository{
-			"github.com/org/repo": {
+			"personal": {Path: "/ws", Repos: []domain.Repository{{
 				URL:    "git@github.com:org/repo.git",
 				Secret: &domain.Secret{Source: "github.com/org/repo.env.sops", Target: ".env"},
-			},
+			}}},
 		},
 		Secrets: domain.SecretsConfig{Path: "/secrets"},
 	}}

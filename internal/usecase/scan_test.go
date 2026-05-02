@@ -37,7 +37,7 @@ func TestScanExecute(t *testing.T) {
 			t.Fatalf("expected 2 workspace repos, got %d", len(ws.Repos))
 		}
 
-		repo := store.config.Repos["github.com/org/one"]
+		repo := ws.Repos[0]
 		if repo.Secret == nil || repo.Secret.Source != "github.com/org/one.env.sops" {
 			t.Fatalf("expected default secret metadata, got %+v", repo.Secret)
 		}
@@ -58,9 +58,6 @@ func TestScanExecute(t *testing.T) {
 
 		if len(store.config.Workspaces["personal"].Repos) != 0 {
 			t.Fatalf("dry run should not persist workspace changes")
-		}
-		if len(store.config.Repos) != 0 {
-			t.Fatalf("dry run should not persist repo catalog changes")
 		}
 	})
 
@@ -104,7 +101,7 @@ func TestScanExecute(t *testing.T) {
 	})
 
 	t.Run("skips invalid and existing repositories", func(t *testing.T) {
-		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []string{"github.com/org/existing"}}}, Repos: map[string]domain.Repository{"github.com/org/existing": {URL: "git@github.com:org/existing.git"}}}}
+		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:org/existing.git"}}}}}}
 		discoverer := fakeDiscoverer{repos: []domain.Repository{{URL: "git@github.com:org/existing.git"}, {URL: "not-a-url"}}}
 		uc := NewScan(store, discoverer)
 

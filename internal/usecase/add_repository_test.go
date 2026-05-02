@@ -9,11 +9,11 @@ import (
 )
 
 func TestAddRepositoryExecute(t *testing.T) {
-	t.Run("adds repo to workspace and catalog", func(t *testing.T) {
+	t.Run("adds repo to workspace", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}}}
 		uc := NewAddRepository(store)
 
-		repoID, err := uc.Execute(context.Background(), AddRepositoryInput{
+		repoURL, err := uc.Execute(context.Background(), AddRepositoryInput{
 			URL:       "git@github.com:jonsampson/rivit.git",
 			Workspace: "personal",
 		})
@@ -21,18 +21,16 @@ func TestAddRepositoryExecute(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if repoID != "github.com/jonsampson/rivit" {
-			t.Fatalf("unexpected repo id: %s", repoID)
+		if repoURL != "git@github.com:jonsampson/rivit.git" {
+			t.Fatalf("unexpected repo url: %s", repoURL)
 		}
 
 		ws := store.config.Workspaces["personal"]
-		if len(ws.Repos) != 1 || ws.Repos[0] != repoID {
+		if len(ws.Repos) != 1 || ws.Repos[0].URL != repoURL {
 			t.Fatalf("workspace repo not linked: %+v", ws.Repos)
 		}
-
-		repo := store.config.Repos[repoID]
-		if repo.URL != "git@github.com:jonsampson/rivit.git" {
-			t.Fatalf("repo catalog not saved: %+v", repo)
+		if ws.Repos[0].Secret == nil || ws.Repos[0].Secret.Source != "github.com/jonsampson/rivit.env.sops" {
+			t.Fatalf("secret metadata not saved: %+v", ws.Repos[0].Secret)
 		}
 	})
 
@@ -65,7 +63,7 @@ func TestAddRepositoryExecute(t *testing.T) {
 	})
 
 	t.Run("duplicate in workspace", func(t *testing.T) {
-		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []string{"github.com/jonsampson/rivit"}}}}}
+		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:jonsampson/rivit.git"}}}}}}
 		uc := NewAddRepository(store)
 		_, err := uc.Execute(context.Background(), AddRepositoryInput{URL: "git@github.com:jonsampson/rivit.git", Workspace: "personal"})
 		if !errors.Is(err, ErrRepositoryExists) {
