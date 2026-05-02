@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/jonsampson/rivit/internal/adapter"
 	"github.com/jonsampson/rivit/internal/domain"
@@ -17,6 +19,7 @@ import (
 type App struct {
 	cli        adapter.CLI
 	configPath string
+	in         io.Reader
 	out        io.Writer
 	errOut     io.Writer
 }
@@ -30,6 +33,7 @@ func NewApp(out io.Writer, errOut io.Writer) (App, error) {
 	return App{
 		cli:        adapter.NewCLI(out),
 		configPath: configPath,
+		in:         os.Stdin,
 		out:        out,
 		errOut:     errOut,
 	}, nil
@@ -173,6 +177,19 @@ func (a App) runAbsorb(ctx context.Context, args []string, absorbUse usecase.Abs
 		}
 	}
 
+	if !input.DryRun && !input.Yes {
+		confirmed, err := a.confirmAbsorb()
+		if err != nil {
+			fmt.Fprintf(a.errOut, "error: %v\n", err)
+			return 2
+		}
+		if !confirmed {
+			fmt.Fprintln(a.out, "absorb cancelled")
+			return 0
+		}
+		input.Yes = true
+	}
+
 	out, err := absorbUse.Execute(ctx, input)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "error: %v\n", err)
@@ -185,6 +202,25 @@ func (a App) runAbsorb(ctx context.Context, args []string, absorbUse usecase.Abs
 	}
 	fmt.Fprintln(a.out)
 	return 0
+}
+
+func (a App) confirmAbsorb() (bool, error) {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false, fmt.Errorf("check stdin: %w", err)
+	}
+	if (info.Mode() & os.ModeCharDevice) == 0 {
+		return false, usecase.ErrAbsorbConfirmationRequired
+	}
+
+	fmt.Fprint(a.out, "absorb will overwrite encrypted secret files from local .env files. Continue? [y/N]: ")
+	reader := bufio.NewReader(a.in)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("read confirmation: %w", err)
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "y" || answer == "yes", nil
 }
 
 func (a App) runHydrate(ctx context.Context, args []string, hydrateUse usecase.Hydrate) int {
