@@ -69,7 +69,7 @@ func (a App) Run(args []string) int {
 	listRepositoryUse := usecase.NewListRepository(store)
 	removeWorkspaceUse := usecase.NewRemoveWorkspace(store)
 	removeRepositoryUse := usecase.NewRemoveRepository(store)
-	scanUse := usecase.NewScan(store, gitDiscoverer)
+	scanUse := usecase.NewScan(store, gitDiscoverer, pathOps, sops)
 	validateWorkspaceUse := usecase.NewValidateWorkspace(store, validateProbe)
 	validateRepositoryUse := usecase.NewValidateRepository(store, validateProbe)
 	hydrateUse := usecase.NewHydrate(store, pathOps, gitDiscoverer, sops)
@@ -144,11 +144,18 @@ func (a App) Run(args []string) int {
 			fmt.Fprintf(a.errOut, "error: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(a.out, "scan complete: discovered=%d added=%d skipped=%d", result.Discovered, result.Added, result.Skipped)
+		fmt.Fprintf(a.out, "scan complete: discovered=%d added=%d absorbed=%d skipped=%d", result.Discovered, result.Added, result.Absorbed, result.Skipped)
 		if dryRun {
 			fmt.Fprintf(a.out, " (dry-run)")
 		}
 		fmt.Fprintln(a.out)
+		printSkipReasons(a.out, result.SkipReasons)
+		if len(result.Failures) > 0 {
+			for _, failure := range result.Failures {
+				fmt.Fprintf(a.errOut, "scan warning: repo=%s step=%s error=%s\n", failure.RepositoryURL, failure.Step, failure.Message)
+			}
+			return 1
+		}
 		return 0
 	case "validate":
 		return a.runValidate(ctx, cmd.Args, store, validateWorkspaceUse, validateRepositoryUse)
@@ -201,6 +208,13 @@ func (a App) runAbsorb(ctx context.Context, args []string, absorbUse usecase.Abs
 		fmt.Fprintf(a.out, " (dry-run)")
 	}
 	fmt.Fprintln(a.out)
+	printSkipReasons(a.out, out.SkipReasons)
+	if len(out.Failures) > 0 {
+		for _, failure := range out.Failures {
+			fmt.Fprintf(a.errOut, "absorb warning: repo=%s step=%s error=%s\n", failure.RepositoryURL, failure.Step, failure.Message)
+		}
+		return 1
+	}
 	return 0
 }
 
@@ -253,7 +267,28 @@ func (a App) runHydrate(ctx context.Context, args []string, hydrateUse usecase.H
 		fmt.Fprintf(a.out, " (dry-run)")
 	}
 	fmt.Fprintln(a.out)
+	printSkipReasons(a.out, out.SkipReasons)
+	if len(out.Failures) > 0 {
+		for _, failure := range out.Failures {
+			fmt.Fprintf(a.errOut, "hydrate warning: repo=%s step=%s error=%s\n", failure.RepositoryURL, failure.Step, failure.Message)
+		}
+		return 1
+	}
 	return 0
+}
+
+func printSkipReasons(out io.Writer, reasons map[string]int) {
+	if len(reasons) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(reasons))
+	for key := range reasons {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		fmt.Fprintf(out, "skip: reason=%s count=%d\n", key, reasons[key])
+	}
 }
 
 func (a App) runValidate(ctx context.Context, args []string, store adapter.ConfigFileStore, validateWorkspaceUse usecase.ValidateWorkspace, validateRepositoryUse usecase.ValidateRepository) int {

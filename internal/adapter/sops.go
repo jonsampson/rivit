@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type SOPS struct{}
@@ -21,9 +22,9 @@ func (s SOPS) DecryptFile(ctx context.Context, sourcePath string, targetPath str
 
 	cmd := exec.CommandContext(ctx, "sops", "--decrypt", sourcePath)
 	cmd.Dir = filepath.Dir(sourcePath)
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("sops decrypt failed: %w", err)
+		return fmt.Errorf("sops decrypt failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 
 	if err := os.WriteFile(targetPath, output, 0o600); err != nil {
@@ -40,9 +41,9 @@ func (s SOPS) EncryptFile(ctx context.Context, sourcePath string, targetPath str
 
 	cmd := exec.CommandContext(ctx, "sops", "--encrypt", "--filename-override", targetPath, sourcePath)
 	cmd.Dir = filepath.Dir(targetPath)
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("sops encrypt failed: %w", err)
+		return fmt.Errorf("sops encrypt failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 
 	if err := os.WriteFile(targetPath, output, 0o600); err != nil {

@@ -42,6 +42,14 @@ type HydrateOutput struct {
 	ReposCloned         int
 	SecretsMaterialized int
 	Skipped             int
+	SkipReasons         map[string]int
+	Failures            []HydrateFailure
+}
+
+type HydrateFailure struct {
+	RepositoryURL string
+	Step          string
+	Message       string
 }
 
 type Hydrate struct {
@@ -70,7 +78,7 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 		return HydrateOutput{}, err
 	}
 
-	out := HydrateOutput{}
+	out := HydrateOutput{SkipReasons: map[string]int{}}
 
 	for _, ref := range refs {
 		workspaceExists, err := u.paths.PathExists(ctx, ref.WorkspacePath)
@@ -96,10 +104,18 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 		if !input.SecretsOnly {
 			if repoExists {
 				out.Skipped++
+				out.SkipReasons["repo_exists"]++
 			} else if input.DryRun {
 				out.ReposCloned++
 			} else if err := u.git.Clone(ctx, ref.Repository.URL, repoPath); err != nil {
-				return HydrateOutput{}, fmt.Errorf("clone repo: %w", err)
+				out.Skipped++
+				out.SkipReasons["clone_failed"]++
+				out.Failures = append(out.Failures, HydrateFailure{
+					RepositoryURL: ref.Repository.URL,
+					Step:          "clone",
+					Message:       err.Error(),
+				})
+				continue
 			} else {
 				out.ReposCloned++
 				repoExists = true
@@ -117,12 +133,23 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 
 		secretPath := filepath.Join(cfg.Secrets.Path, ref.Repository.Secret.Source)
 		envPath := filepath.Join(repoPath, ref.Repository.Secret.Target)
+		secretExists, err := u.paths.PathExists(ctx, secretPath)
+		if err != nil {
+			return HydrateOutput{}, fmt.Errorf("check secret path: %w", err)
+		}
+		if !secretExists {
+			out.Skipped++
+			out.SkipReasons["secret_missing"]++
+			continue
+		}
+
 		envExists, err := u.paths.PathExists(ctx, envPath)
 		if err != nil {
 			return HydrateOutput{}, fmt.Errorf("check env path: %w", err)
 		}
 		if envExists && !input.ForceEnv {
 			out.Skipped++
+			out.SkipReasons["env_exists"]++
 			continue
 		}
 
@@ -132,7 +159,14 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 		}
 
 		if err := u.secrets.DecryptFile(ctx, secretPath, envPath); err != nil {
-			return HydrateOutput{}, fmt.Errorf("materialize secret: %w", err)
+			out.Skipped++
+			out.SkipReasons["decrypt_failed"]++
+			out.Failures = append(out.Failures, HydrateFailure{
+				RepositoryURL: ref.Repository.URL,
+				Step:          "decrypt",
+				Message:       err.Error(),
+			})
+			continue
 		}
 		out.SecretsMaterialized++
 	}

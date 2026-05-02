@@ -22,7 +22,7 @@ func NewGitDiscoverer() GitDiscoverer {
 	return GitDiscoverer{}
 }
 
-func (d GitDiscoverer) Discover(ctx context.Context, root string) ([]domain.Repository, error) {
+func (d GitDiscoverer) Discover(ctx context.Context, root string) ([]domain.DiscoveredRepository, error) {
 	dtos := []gitDiscoveredRepository{}
 
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -48,9 +48,9 @@ func (d GitDiscoverer) Discover(ctx context.Context, root string) ([]domain.Repo
 		return nil, fmt.Errorf("walk directory %s: %w", root, err)
 	}
 
-	repos := make([]domain.Repository, 0, len(dtos))
+	repos := make([]domain.DiscoveredRepository, 0, len(dtos))
 	for _, dto := range dtos {
-		repos = append(repos, domain.Repository{URL: dto.remote})
+		repos = append(repos, domain.DiscoveredRepository{Path: dto.path, URL: dto.remote})
 	}
 
 	return repos, nil

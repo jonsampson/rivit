@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/jonsampson/rivit/internal/domain"
@@ -17,7 +18,15 @@ type scanConfigStore interface {
 }
 
 type repositoryDiscoverer interface {
-	Discover(context.Context, string) ([]domain.Repository, error)
+	Discover(context.Context, string) ([]domain.DiscoveredRepository, error)
+}
+
+type scanPathOps interface {
+	PathExists(context.Context, string) (bool, error)
+}
+
+type scanSecretOps interface {
+	EncryptFile(context.Context, string, string) error
 }
 
 type ScanInput struct {
@@ -29,16 +38,27 @@ type ScanInput struct {
 type ScanOutput struct {
 	Discovered int
 	Added      int
+	Absorbed   int
 	Skipped    int
+	SkipReasons map[string]int
+	Failures   []ScanFailure
+}
+
+type ScanFailure struct {
+	RepositoryURL string
+	Step          string
+	Message       string
 }
 
 type Scan struct {
 	store      scanConfigStore
 	discoverer repositoryDiscoverer
+	paths      scanPathOps
+	secrets    scanSecretOps
 }
 
-func NewScan(store scanConfigStore, discoverer repositoryDiscoverer) Scan {
-	return Scan{store: store, discoverer: discoverer}
+func NewScan(store scanConfigStore, discoverer repositoryDiscoverer, paths scanPathOps, secrets scanSecretOps) Scan {
+	return Scan{store: store, discoverer: discoverer, paths: paths, secrets: secrets}
 }
 
 func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) {
@@ -74,16 +94,22 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 
 	added := 0
 	skipped := 0
+	absorbed := 0
+	skipReasons := map[string]int{}
+	failures := []ScanFailure{}
 	for _, repo := range found {
 		repoURL := strings.TrimSpace(repo.URL)
 		repoID, err := domain.RepoIDFromRemoteURL(repoURL)
 		if err != nil {
 			skipped++
+			skipReasons["invalid_remote"]++
+			failures = append(failures, ScanFailure{RepositoryURL: repoURL, Step: "normalize", Message: err.Error()})
 			continue
 		}
 
 		if _, exists := knownInWorkspace[repoURL]; exists {
 			skipped++
+			skipReasons["already_tracked"]++
 			continue
 		}
 
@@ -96,6 +122,30 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 			},
 		})
 		added++
+
+		envPath := filepath.Join(repo.Path, ".env")
+		envExists, err := u.paths.PathExists(ctx, envPath)
+		if err != nil {
+			return ScanOutput{}, fmt.Errorf("check env file: %w", err)
+		}
+		if envExists {
+			secretPath := filepath.Join(cfg.Secrets.Path, repoID+".env.sops")
+			secretExists, err := u.paths.PathExists(ctx, secretPath)
+			if err != nil {
+				return ScanOutput{}, fmt.Errorf("check secret file: %w", err)
+			}
+			if !secretExists {
+				if !input.DryRun {
+					if err := u.secrets.EncryptFile(ctx, envPath, secretPath); err != nil {
+						skipped++
+						skipReasons["absorb_failed"]++
+						failures = append(failures, ScanFailure{RepositoryURL: repoURL, Step: "absorb", Message: err.Error()})
+						continue
+					}
+				}
+				absorbed++
+			}
+		}
 	}
 
 	if !input.DryRun {
@@ -105,5 +155,6 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 		}
 	}
 
-	return ScanOutput{Discovered: len(found), Added: added, Skipped: skipped}, nil
+	out := ScanOutput{Discovered: len(found), Added: added, Absorbed: absorbed, Skipped: skipped, SkipReasons: skipReasons, Failures: failures}
+	return out, nil
 }

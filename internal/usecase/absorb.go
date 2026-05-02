@@ -36,6 +36,14 @@ type AbsorbInput struct {
 type AbsorbOutput struct {
 	Updated int
 	Skipped int
+	SkipReasons map[string]int
+	Failures []AbsorbFailure
+}
+
+type AbsorbFailure struct {
+	RepositoryURL string
+	Step          string
+	Message       string
 }
 
 type Absorb struct {
@@ -66,10 +74,11 @@ func (u Absorb) Execute(ctx context.Context, input AbsorbInput) (AbsorbOutput, e
 		return AbsorbOutput{}, err
 	}
 
-	out := AbsorbOutput{}
+	out := AbsorbOutput{SkipReasons: map[string]int{}}
 	for _, ref := range refs {
 		if ref.Repository.Secret == nil {
 			out.Skipped++
+			out.SkipReasons["no_secret_config"]++
 			continue
 		}
 
@@ -81,6 +90,7 @@ func (u Absorb) Execute(ctx context.Context, input AbsorbInput) (AbsorbOutput, e
 		}
 		if !exists {
 			out.Skipped++
+			out.SkipReasons["env_missing"]++
 			continue
 		}
 
@@ -91,7 +101,10 @@ func (u Absorb) Execute(ctx context.Context, input AbsorbInput) (AbsorbOutput, e
 		}
 
 		if err := u.secrets.EncryptFile(ctx, envPath, secretPath); err != nil {
-			return AbsorbOutput{}, fmt.Errorf("encrypt secret: %w", err)
+			out.Skipped++
+			out.SkipReasons["encrypt_failed"]++
+			out.Failures = append(out.Failures, AbsorbFailure{RepositoryURL: ref.Repository.URL, Step: "encrypt", Message: err.Error()})
+			continue
 		}
 		out.Updated++
 	}
