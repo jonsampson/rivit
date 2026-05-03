@@ -256,6 +256,10 @@ func (a App) runHydrate(ctx context.Context, args []string, hydrateUse usecase.H
 		}
 	}
 
+	input.Progress = func(p usecase.HydrateProgress) {
+		fmt.Fprintf(a.out, "hydrate progress: %d/%d repo=%s stage=%s\n", p.Current, p.Total, p.RepositoryURL, p.Stage)
+	}
+
 	out, err := hydrateUse.Execute(ctx, input)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "error: %v\n", err)

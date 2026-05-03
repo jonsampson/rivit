@@ -35,6 +35,14 @@ type HydrateInput struct {
 	ReposOnly   bool
 	SecretsOnly bool
 	ForceEnv    bool
+	Progress    func(HydrateProgress)
+}
+
+type HydrateProgress struct {
+	Current       int
+	Total         int
+	RepositoryURL string
+	Stage         string
 }
 
 type HydrateOutput struct {
@@ -80,7 +88,11 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 
 	out := HydrateOutput{SkipReasons: map[string]int{}}
 
-	for _, ref := range refs {
+	for i, ref := range refs {
+		if input.Progress != nil {
+			input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "start"})
+		}
+
 		workspaceExists, err := u.paths.PathExists(ctx, ref.WorkspacePath)
 		if err != nil {
 			return HydrateOutput{}, fmt.Errorf("check workspace path: %w", err)
@@ -105,8 +117,14 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 			if repoExists {
 				out.Skipped++
 				out.SkipReasons["repo_exists"]++
+				if input.Progress != nil {
+					input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "repo_exists"})
+				}
 			} else if input.DryRun {
 				out.ReposCloned++
+				if input.Progress != nil {
+					input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "clone_dry_run"})
+				}
 			} else if err := u.git.Clone(ctx, ref.Repository.URL, repoPath); err != nil {
 				out.Skipped++
 				out.SkipReasons["clone_failed"]++
@@ -115,10 +133,16 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 					Step:          "clone",
 					Message:       err.Error(),
 				})
+				if input.Progress != nil {
+					input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "clone_failed"})
+				}
 				continue
 			} else {
 				out.ReposCloned++
 				repoExists = true
+				if input.Progress != nil {
+					input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "cloned"})
+				}
 			}
 		}
 
@@ -140,6 +164,9 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 		if !secretExists {
 			out.Skipped++
 			out.SkipReasons["secret_missing"]++
+			if input.Progress != nil {
+				input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "secret_missing"})
+			}
 			continue
 		}
 
@@ -150,11 +177,17 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 		if envExists && !input.ForceEnv {
 			out.Skipped++
 			out.SkipReasons["env_exists"]++
+			if input.Progress != nil {
+				input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "env_exists"})
+			}
 			continue
 		}
 
 		if input.DryRun {
 			out.SecretsMaterialized++
+			if input.Progress != nil {
+				input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "decrypt_dry_run"})
+			}
 			continue
 		}
 
@@ -166,9 +199,15 @@ func (u Hydrate) Execute(ctx context.Context, input HydrateInput) (HydrateOutput
 				Step:          "decrypt",
 				Message:       err.Error(),
 			})
+			if input.Progress != nil {
+				input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "decrypt_failed"})
+			}
 			continue
 		}
 		out.SecretsMaterialized++
+		if input.Progress != nil {
+			input.Progress(HydrateProgress{Current: i + 1, Total: len(refs), RepositoryURL: ref.Repository.URL, Stage: "decrypted"})
+		}
 	}
 
 	return out, nil
