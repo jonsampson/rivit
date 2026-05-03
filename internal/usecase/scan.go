@@ -18,7 +18,7 @@ type scanConfigStore interface {
 }
 
 type repositoryDiscoverer interface {
-	Discover(context.Context, string) ([]domain.DiscoveredRepository, error)
+	Discover(context.Context, string, func(repoPath string, remoteURL string) error) error
 }
 
 type scanPathOps interface {
@@ -82,11 +82,6 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 		return ScanOutput{}, fmt.Errorf("%w: %s", ErrWorkspaceNotFound, workspaceName)
 	}
 
-	found, err := u.discoverer.Discover(ctx, path)
-	if err != nil {
-		return ScanOutput{}, fmt.Errorf("discover repositories: %w", err)
-	}
-
 	knownInWorkspace := map[string]struct{}{}
 	for _, repo := range ws.Repos {
 		knownInWorkspace[repo.URL] = struct{}{}
@@ -97,20 +92,22 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 	absorbed := 0
 	skipReasons := map[string]int{}
 	failures := []ScanFailure{}
-	for _, repo := range found {
-		repoURL := strings.TrimSpace(repo.URL)
+	discovered := 0
+	err = u.discoverer.Discover(ctx, path, func(repoPath string, remoteURL string) error {
+		discovered++
+		repoURL := strings.TrimSpace(remoteURL)
 		repoID, err := domain.RepoIDFromRemoteURL(repoURL)
 		if err != nil {
 			skipped++
 			skipReasons["invalid_remote"]++
 			failures = append(failures, ScanFailure{RepositoryURL: repoURL, Step: "normalize", Message: err.Error()})
-			continue
+			return nil
 		}
 
 		if _, exists := knownInWorkspace[repoURL]; exists {
 			skipped++
 			skipReasons["already_tracked"]++
-			continue
+			return nil
 		}
 
 		knownInWorkspace[repoURL] = struct{}{}
@@ -123,16 +120,16 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 		})
 		added++
 
-		envPath := filepath.Join(repo.Path, ".env")
+		envPath := filepath.Join(repoPath, ".env")
 		envExists, err := u.paths.PathExists(ctx, envPath)
 		if err != nil {
-			return ScanOutput{}, fmt.Errorf("check env file: %w", err)
+			return fmt.Errorf("check env file: %w", err)
 		}
 		if envExists {
 			secretPath := filepath.Join(cfg.Secrets.Path, repoID+".env.sops")
 			secretExists, err := u.paths.PathExists(ctx, secretPath)
 			if err != nil {
-				return ScanOutput{}, fmt.Errorf("check secret file: %w", err)
+				return fmt.Errorf("check secret file: %w", err)
 			}
 			if !secretExists {
 				if !input.DryRun {
@@ -140,14 +137,18 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 						skipped++
 						skipReasons["absorb_failed"]++
 						failures = append(failures, ScanFailure{RepositoryURL: repoURL, Step: "absorb", Message: err.Error()})
-						continue
+						return nil
 					}
 				}
 				absorbed++
 			}
 		}
-	}
 
+		return nil
+	})
+	if err != nil {
+		return ScanOutput{}, fmt.Errorf("discover repositories: %w", err)
+	}
 	if !input.DryRun {
 		cfg.Workspaces[workspaceName] = ws
 		if err := u.store.Save(ctx, cfg); err != nil {
@@ -155,6 +156,6 @@ func (u Scan) Execute(ctx context.Context, input ScanInput) (ScanOutput, error) 
 		}
 	}
 
-	out := ScanOutput{Discovered: len(found), Added: added, Absorbed: absorbed, Skipped: skipped, SkipReasons: skipReasons, Failures: failures}
+	out := ScanOutput{Discovered: discovered, Added: added, Absorbed: absorbed, Skipped: skipped, SkipReasons: skipReasons, Failures: failures}
 	return out, nil
 }

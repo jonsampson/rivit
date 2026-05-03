@@ -9,18 +9,32 @@ import (
 )
 
 type fakeDiscoverer struct {
-	repos []domain.DiscoveredRepository
+	repos []struct {
+		path string
+		url  string
+	}
 	err   error
 }
 
-func (d fakeDiscoverer) Discover(context.Context, string) ([]domain.DiscoveredRepository, error) {
-	return d.repos, d.err
+func (d fakeDiscoverer) Discover(_ context.Context, _ string, visit func(repoPath string, remoteURL string) error) error {
+	if d.err != nil {
+		return d.err
+	}
+	for _, repo := range d.repos {
+		if err := visit(repo.path, repo.url); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func TestScanExecute(t *testing.T) {
 	t.Run("adds discovered repositories", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}}}
-		discoverer := fakeDiscoverer{repos: []domain.DiscoveredRepository{{Path: "/existing/one", URL: "git@github.com:org/one.git"}, {Path: "/existing/two", URL: "git@github.com:org/two.git"}}}
+		discoverer := fakeDiscoverer{repos: []struct {
+			path string
+			url  string
+		}{{path: "/existing/one", url: "git@github.com:org/one.git"}, {path: "/existing/two", url: "git@github.com:org/two.git"}}}
 		paths := &memoryPathOps{exists: map[string]bool{"/existing/one/.env": true, "/secrets/github.com/org/one.env.sops": true}}
 		uc := NewScan(store, discoverer, paths, &memoryEncryptOps{})
 
@@ -46,7 +60,10 @@ func TestScanExecute(t *testing.T) {
 
 	t.Run("dry run does not save", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}}}
-		discoverer := fakeDiscoverer{repos: []domain.DiscoveredRepository{{Path: "/existing/one", URL: "git@github.com:org/one.git"}}}
+		discoverer := fakeDiscoverer{repos: []struct {
+			path string
+			url  string
+		}{{path: "/existing/one", url: "git@github.com:org/one.git"}}}
 		paths := &memoryPathOps{exists: map[string]bool{"/existing/one/.env": true}}
 		uc := NewScan(store, discoverer, paths, &memoryEncryptOps{})
 
@@ -96,7 +113,10 @@ func TestScanExecute(t *testing.T) {
 		}
 
 		store = &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}}, saveErr: errors.New("boom")}
-		uc = NewScan(store, fakeDiscoverer{repos: []domain.DiscoveredRepository{{Path: "/existing/one", URL: "git@github.com:org/one.git"}}}, &memoryPathOps{exists: map[string]bool{}}, &memoryEncryptOps{})
+		uc = NewScan(store, fakeDiscoverer{repos: []struct {
+			path string
+			url  string
+		}{{path: "/existing/one", url: "git@github.com:org/one.git"}}}, &memoryPathOps{exists: map[string]bool{}}, &memoryEncryptOps{})
 		if _, err := uc.Execute(context.Background(), ScanInput{Path: "~/dev", Workspace: "personal"}); err == nil {
 			t.Fatalf("expected save error")
 		}
@@ -104,7 +124,10 @@ func TestScanExecute(t *testing.T) {
 
 	t.Run("skips invalid and existing repositories", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code", Repos: []domain.Repository{{URL: "git@github.com:org/existing.git"}}}}}}
-		discoverer := fakeDiscoverer{repos: []domain.DiscoveredRepository{{Path: "/existing/repo", URL: "git@github.com:org/existing.git"}, {Path: "/existing/bad", URL: "not-a-url"}}}
+		discoverer := fakeDiscoverer{repos: []struct {
+			path string
+			url  string
+		}{{path: "/existing/repo", url: "git@github.com:org/existing.git"}, {path: "/existing/bad", url: "not-a-url"}}}
 		uc := NewScan(store, discoverer, &memoryPathOps{exists: map[string]bool{}}, &memoryEncryptOps{})
 
 		out, err := uc.Execute(context.Background(), ScanInput{Path: "~/dev", Workspace: "personal"})
@@ -118,7 +141,10 @@ func TestScanExecute(t *testing.T) {
 
 	t.Run("continues when absorb fails", func(t *testing.T) {
 		store := &memoryConfigStore{config: domain.Config{Version: 1, Workspaces: map[string]domain.Workspace{"personal": {Path: "~/Code"}}, Secrets: domain.SecretsConfig{Path: "/secrets"}}}
-		discoverer := fakeDiscoverer{repos: []domain.DiscoveredRepository{{Path: "/existing/one", URL: "git@github.com:org/one.git"}}}
+		discoverer := fakeDiscoverer{repos: []struct {
+			path string
+			url  string
+		}{{path: "/existing/one", url: "git@github.com:org/one.git"}}}
 		paths := &memoryPathOps{exists: map[string]bool{"/existing/one/.env": true}}
 		uc := NewScan(store, discoverer, paths, &memoryEncryptOps{err: errors.New("boom")})
 

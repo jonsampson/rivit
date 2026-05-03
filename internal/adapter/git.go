@@ -7,24 +7,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/jonsampson/rivit/internal/domain"
 )
 
 type GitDiscoverer struct{}
-
-type gitDiscoveredRepository struct {
-	path   string
-	remote string
-}
 
 func NewGitDiscoverer() GitDiscoverer {
 	return GitDiscoverer{}
 }
 
-func (d GitDiscoverer) Discover(ctx context.Context, root string) ([]domain.DiscoveredRepository, error) {
-	dtos := []gitDiscoveredRepository{}
-
+func (d GitDiscoverer) Discover(ctx context.Context, root string, visit func(repoPath string, remoteURL string) error) error {
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -39,21 +30,18 @@ func (d GitDiscoverer) Discover(ctx context.Context, root string) ([]domain.Disc
 		repoPath := filepath.Dir(path)
 		remote, remoteErr := gitOriginRemote(ctx, repoPath)
 		if remoteErr == nil && strings.TrimSpace(remote) != "" {
-			dtos = append(dtos, gitDiscoveredRepository{path: repoPath, remote: strings.TrimSpace(remote)})
+			if err := visit(repoPath, strings.TrimSpace(remote)); err != nil {
+				return err
+			}
 		}
 
 		return filepath.SkipDir
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walk directory %s: %w", root, err)
+		return fmt.Errorf("walk directory %s: %w", root, err)
 	}
 
-	repos := make([]domain.DiscoveredRepository, 0, len(dtos))
-	for _, dto := range dtos {
-		repos = append(repos, domain.DiscoveredRepository{Path: dto.path, URL: dto.remote})
-	}
-
-	return repos, nil
+	return nil
 }
 
 func gitOriginRemote(ctx context.Context, repoPath string) (string, error) {
