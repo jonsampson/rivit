@@ -34,7 +34,7 @@ rivit --help
 
 `rivit` assumes these tools are available in your environment:
 - `git` (discover and clone repositories)
-- `sops` (encrypt/decrypt secret files)
+- [`sops`](https://getsops.io/) (encrypt/decrypt secret files)
 
 For SOPS with `age` recipients, ensure your age key setup is already working in your shell/session.
 
